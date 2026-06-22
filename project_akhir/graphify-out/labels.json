@@ -1,0 +1,15 @@
+{
+  "0": "Game Views & Routing Loop",
+  "1": "Player Logic & Character Tests",
+  "2": "Game Balancing & Config Loader",
+  "3": "Item Mechanics & Magnet Pickup",
+  "4": "Arcade Migration & RPG Design",
+  "5": "Database Design & Library Stack",
+  "6": "Project Overview & Game FSM",
+  "7": "Dungeon Map Layout & Secrets",
+  "8": "Documentation Guidelines & Style",
+  "9": "Asset Generator Helper Script",
+  "10": "Git Workflow & Team Setup",
+  "11": "Core Module Entry Point",
+  "12": "Test Module Entry Point"
+}

@@ -1,0 +1,67 @@
+{
+  "player": {
+    "base_hp": 100,
+    "hp_per_level": 15,
+    "base_attack_power": 15,
+    "attack_per_level": 3,
+    "base_speed": 4.0,
+    "dodge_dash_speed": 10.0,
+    "dodge_dash_duration": 0.25,
+    "dodge_dash_cooldown": 1.0,
+    "magnet_range": 64.0,
+    "base_xp_required": 100,
+    "xp_exponent": 1.5
+  },
+  "enemies": {
+    "slime": {
+      "hp": 20,
+      "attack_power": 5,
+      "speed": 1.5,
+      "xp_reward": 15,
+      "light_detection_range": 150.0
+    },
+    "skeleton_warrior": {
+      "hp": 45,
+      "attack_power": 12,
+      "speed": 2.2,
+      "xp_reward": 30,
+      "light_detection_range": 180.0
+    },
+    "shadow_ghost": {
+      "hp": 30,
+      "attack_power": 8,
+      "speed": 2.8,
+      "xp_reward": 25,
+      "light_detection_range": 220.0
+    }
+  },
+  "boss_queen_tesa": {
+    "max_hp": 600,
+    "xp_reward": 500,
+    "phase_1": {
+      "attack_power": 15,
+      "speed": 2.0,
+      "projectile_speed": 5.0,
+      "shoot_cooldown": 1.5,
+      "light_detection_range": 400.0
+    },
+    "phase_2": {
+      "hp_threshold_percent": 0.5,
+      "attack_power": 30,
+      "speed": 4.5,
+      "attack_cooldown": 0.8
+    }
+  },
+  "items": {
+    "health_potion": {
+      "heal_amount": 35
+    },
+    "speed_elixir": {
+      "speed_multiplier": 1.5,
+      "duration": 5.0
+    },
+    "emblem_key": {
+      "description": "Kunci emblem kuno untuk mengaktifkan portal Queen Tesa"
+    }
+  }
+}
