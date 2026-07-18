@@ -25,30 +25,40 @@ Untuk mendapatkan tampilan pixel art yang tajam (tidak buram/blur) dan konsisten
 
 ## 2. Alur Transisi State (State Machine)
 
-Berikut adalah diagram transisi antar-state dalam game:
+Berikut adalah diagram transisi antar-state lengkap yang mencakup World Map, Boss Level, dan Ending Win:
 
 ```mermaid
 stateDiagram-v2
     [*] --> STATE_INTRO : Game Start
-    STATE_INTRO --> STATE_MENU : Intro Selesai / Skip (K_RETURN)
+    STATE_INTRO --> STATE_MENU : Intro Selesai / Skip (K_RETURN/Click)
     
-    STATE_MENU --> STATE_PLAYING : Pilih "Start Game"
-    STATE_MENU --> STATE_SHOP : Pilih "Shop" (dari Menu/Hub)
+    STATE_MENU --> STATE_MAP : Pilih "Start Game" (Membuka Peta)
+    STATE_MENU --> STATE_SHOP : Pilih "Shop"
     STATE_MENU --> [*] : Pilih "Exit"
     
+    STATE_MAP --> STATE_PLAYING : Pilih Level Normal
+    STATE_MAP --> STATE_BOSS : Pilih Level Boss (Kunci Terbuka)
+    STATE_MAP --> STATE_MENU : Kembali (ESC)
+    
     STATE_PLAYING --> STATE_PAUSE : Tekan ESC
-    STATE_PAUSE --> STATE_PLAYING : Tekan ESC / Pilih "Resume"
-    STATE_PAUSE --> STATE_MENU : Pilih "Quit to Menu"
+    STATE_PAUSE --> STATE_PLAYING : Pilih "Resume" / ESC
+    STATE_PAUSE --> STATE_MAP : Pilih "Quit to Map"
     
     STATE_PLAYING --> STATE_DIALOGUE : Menyentuh NPC / Trigger Event
     STATE_DIALOGUE --> STATE_PLAYING : Dialog Selesai
     
-    STATE_PLAYING --> STATE_STAGE_CLEAR : Menyelesaikan Stage (Mencapai Goal)
-    STATE_STAGE_CLEAR --> STATE_MENU : Lanjut / Kembali ke Menu
+    STATE_PLAYING --> STATE_STAGE_CLEAR : Mencapai Goal
+    STATE_STAGE_CLEAR --> STATE_MAP : Lanjut / Kembali ke Map
     
     STATE_PLAYING --> STATE_GAME_OVER : Player HP <= 0
-    STATE_GAME_OVER --> STATE_PLAYING : Pilih "Restart"
-    STATE_GAME_OVER --> STATE_MENU : Pilih "Menu"
+    STATE_GAME_OVER --> STATE_PLAYING : Pilih "Retry"
+    STATE_GAME_OVER --> STATE_MAP : Pilih "Quit to Map"
+    
+    STATE_BOSS --> STATE_PAUSE : Tekan ESC
+    STATE_BOSS --> STATE_GAME_OVER : Player HP <= 0
+    STATE_BOSS --> STATE_WIN : Mengalahkan Boss
+    
+    STATE_WIN --> STATE_MENU : Kembali ke Menu Utama (Tamat)
 ```
 
 ---
@@ -137,6 +147,34 @@ stateDiagram-v2
     *   Pilihan: "Retry" (mulai ulang level) atau "Main Menu".
 *   **Output**:
     *   Visual: Efek layar memudar merah/hitam perlahan, tulisan besar "GAME OVER" di tengah, dan opsi pilihan restart.
+
+### I. STATE_MAP (Peta Pemilihan Level)
+*   **Input**:
+    *   Keyboard: Tombol Arah (`K_UP`, `K_DOWN`, `K_LEFT`, `K_RIGHT`) untuk memindahkan kursor pilihan level, `K_RETURN` untuk memilih level, `K_ESCAPE` untuk kembali ke Menu Utama.
+*   **Proses**:
+    *   Mengecek status kunci level (level terkuak / terkunci berdasarkan progress).
+    *   Menggeser kursor pilihan antar titik koordinat node level pada peta.
+*   **Output**:
+    *   Visual: Peta dunia sederhana beresolusi `400x300` dengan representasi titik-titik level (node) dan garis penghubung, ikon kursor player di atas level aktif, serta informasi status level (Selesai/Terkunci).
+
+### J. STATE_BOSS (Level Pertarungan Utama)
+*   **Input**:
+    *   Keyboard/Mouse: Pergerakan player (WASD/Arah), melompat (Space), menyerang (Z/J/Klik mouse), dan Pause (ESC).
+*   **Proses**:
+    *   Memperbarui pergerakan kompleks boss (kecerdasan buatan AI Boss: menembak, melompat, fase serangan kemarahan).
+    *   Kalkulasi damage serangan player ke Boss dan sebaliknya.
+    *   Deteksi HP Boss <= 0 (memicu transisi kemenangan `STATE_WIN`).
+*   **Output**:
+    *   Visual: Arena pertarungan boss tertutup, HUD HP Player, dan bar HP Boss yang besar di bagian atas/bawah layar.
+
+### K. STATE_WIN (Kemenangan Akhir / Ending)
+*   **Input**:
+    *   Keyboard: `K_RETURN` / `K_SPACE` untuk melanjutkan.
+*   **Proses**:
+    *   Menghentikan seluruh aktivitas gameplay.
+    *   Menampilkan durasi total penyelesaian game dan jumlah emas akhir.
+*   **Output**:
+    *   Visual: Efek tulisan selamat bergaya megah, teks ucapan "THANK YOU FOR PLAYING", daftar nama pengembang (credit roll), dan transisi kembali ke `STATE_MENU`.
 
 ---
 

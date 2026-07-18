@@ -5,10 +5,10 @@ from src.setting import (
     WINDOW_WIDTH, WINDOW_HEIGHT, DISPLAY_WIDTH, DISPLAY_HEIGHT, FRAMERATE,
     BG_COLOR, COL_GOLD, COL_ACCENT, COL_WHITE, COL_BLACK, COL_RED, COL_DARK_GRAY,
     STATE_INTRO, STATE_MENU, STATE_PLAYING, STATE_PAUSE, STATE_DIALOGUE,
-    STATE_SHOP, STATE_STAGE_CLEAR, STATE_GAME_OVER, PLAYER_MAX_HP, PLAYER_ATTACK,
-    MOVE_SPEED, XP_BASE
+    STATE_SHOP, STATE_STAGE_CLEAR, STATE_GAME_OVER, XP_BASE
 )
 from src.ui import draw_text, RetroPanel, RetroButton, ProgressBar, DialogueBox
+from src.player import Player
 
 class Game:
     def __init__(self):
@@ -27,19 +27,8 @@ class Game:
         # 2. Inisialisasi State Game
         self.current_state = STATE_INTRO
         
-        # 3. Parameter Gameplay Player
-        self.player_x = 40
-        self.player_y = 200
-        self.player_vx = 0
-        self.player_vy = 0
-        self.player_max_hp = PLAYER_MAX_HP
-        self.player_hp = PLAYER_MAX_HP
-        self.player_gold = 30
-        self.player_xp = 0
-        self.player_atk = PLAYER_ATTACK
-        self.player_speed = MOVE_SPEED
-        self.is_grounded = False
-        self.invincible_timer = 0
+        # 3. Inisialisasi Player (dari src/player.py)
+        self.player = Player(40, 200)
         
         # Level Konstanta & Objek
         self.ground_y = 250
@@ -57,8 +46,8 @@ class Game:
         self.enemy_patrol_max = 300
         
         # UI HUD
-        self.hp_bar = ProgressBar(10, 10, 80, 8, self.player_max_hp, self.player_max_hp, COL_RED)
-        self.xp_bar = ProgressBar(10, 20, 80, 5, self.player_xp, XP_BASE, COL_GOLD)
+        self.hp_bar = ProgressBar(10, 10, 80, 8, self.player.max_hp, self.player.max_hp, COL_RED)
+        self.xp_bar = ProgressBar(10, 20, 80, 5, self.player.xp, XP_BASE, COL_GOLD)
         
         # Dialogue Box
         self.dialogue_box = DialogueBox(20, DISPLAY_HEIGHT - 65, DISPLAY_WIDTH - 40, 50)
@@ -78,11 +67,6 @@ class Game:
         ]
         
         self.shop_index = 0
-        self.shop_items = [
-            {"name": "+20 Max HP (15g)", "cost": 15, "stat": "hp"},
-            {"name": "+5 Attack (10g)", "cost": 10, "stat": "atk"},
-            {"name": "+20 Speed (20g)", "cost": 20, "stat": "spd"}
-        ]
         self.shop_buttons = [
             RetroButton(DISPLAY_WIDTH // 2 - 80, 110, 160, 22, "Upgrade HP (15g)", lambda: self.buy_upgrade(0)),
             RetroButton(DISPLAY_WIDTH // 2 - 80, 140, 160, 22, "Upgrade Atk (10g)", lambda: self.buy_upgrade(1)),
@@ -97,14 +81,8 @@ class Game:
         
     # --- AKSI BUTTONS ---
     def start_game(self):
-        # Reset stats basic ketika mulai baru
-        self.player_x = 40
-        self.player_y = 200
-        self.player_vx = 0
-        self.player_vy = 0
-        self.player_hp = self.player_max_hp
-        self.player_xp = 0
-        self.player_gold = 30
+        # Reset statistik player saat memulai permainan baru
+        self.player.reset(40, 200)
         self.current_state = STATE_PLAYING
         
     def resume_game(self):
@@ -124,17 +102,20 @@ class Game:
         sys.exit()
         
     def buy_upgrade(self, idx):
-        item = self.shop_items[idx]
-        if self.player_gold >= item["cost"]:
-            self.player_gold -= item["cost"]
-            if item["stat"] == "hp":
-                self.player_max_hp += 20
-                self.player_hp = self.player_max_hp  # Heal ke max setelah upgrade
-                self.hp_bar.max_val = self.player_max_hp
-            elif item["stat"] == "atk":
-                self.player_atk += 5
-            elif item["stat"] == "spd":
-                self.player_speed += 20
+        item = self.shop_buttons[idx]  # Mengambil target menu berdasarkan index
+        costs = [15, 10, 20]           # Sesuai dengan harga pada setting
+        cost = costs[idx]
+        
+        if self.player.gold >= cost:
+            self.player.gold -= cost
+            if idx == 0:  # HP Upgrade
+                self.player.max_hp += 20
+                self.player.hp = self.player.max_hp
+                self.hp_bar.max_val = self.player.max_hp
+            elif idx == 1:  # ATK Upgrade
+                self.player.atk += 5
+            elif idx == 2:  # SPD Upgrade
+                self.player.speed += 20
         
     # --- LOOP UTAMA ---
     def run(self):
@@ -199,7 +180,7 @@ class Game:
                 if event.type == pygame.KEYDOWN:
                     # Mulai Dialog dengan NPC jika dekat
                     if event.key in (pygame.K_RETURN, pygame.K_e):
-                        if abs(self.player_x - self.npc_x) < 24:
+                        if abs(self.player.x - self.npc_x) < 24:
                             self.current_state = STATE_DIALOGUE
                             self.dialogue_box.start_dialogue(
                                 "Kakek Bijak",
@@ -262,8 +243,13 @@ class Game:
                 if event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_RETURN, pygame.K_SPACE):
                         if self.current_state == STATE_STAGE_CLEAR:
-                            # Lanjut main
-                            self.start_game()
+                            # Lanjut main dengan data yang sudah di-upgrade
+                            self.player.x = 40
+                            self.player.y = 200
+                            self.player.vx = 0
+                            self.player.vy = 0
+                            self.player.is_grounded = False
+                            self.current_state = STATE_PLAYING
                         else:
                             # Restart setelah game over
                             self.start_game()
@@ -295,45 +281,12 @@ class Game:
             self.dialogue_box.update()
 
     def update_physics(self, dt):
-        # 1. Update Cooldown Invincibility Player
-        if self.invincible_timer > 0:
-            self.invincible_timer -= dt
-            
-        # 2. Deteksi Key Pergerakan Player
+        # 1. Input & Pergerakan Player
         keys = pygame.key.get_pressed()
-        self.player_vx = 0
-        if keys[pygame.K_a] or keys[pygame.K_LEFT]:
-            self.player_vx = -self.player_speed
-        if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
-            self.player_vx = self.player_speed
+        self.player.handle_input(keys)
+        self.player.update(dt, self.ground_y, DISPLAY_WIDTH)
             
-        # Lompat (Jump)
-        if (keys[pygame.K_SPACE] or keys[pygame.K_w] or keys[pygame.K_UP]) and self.is_grounded:
-            self.player_vy = -180  # Kekuatan lompatan
-            self.is_grounded = False
-            
-        # Gravitasi
-        self.player_vy += 500 * dt  # Kecepatan gravitasi px/s^2
-        if self.player_vy > 300:     # Limit fall speed
-            self.player_vy = 300
-            
-        # 3. Update Posisi Player & Batas Layar
-        self.player_x += self.player_vx * dt
-        self.player_y += self.player_vy * dt
-        
-        # Batasi agar player tidak keluar layar horizontal
-        if self.player_x < 0:
-            self.player_x = 0
-        elif self.player_x > DISPLAY_WIDTH - 16:
-            self.player_x = DISPLAY_WIDTH - 16
-            
-        # Deteksi tabrakan tanah (sederhana)
-        if self.player_y + 16 >= self.ground_y:
-            self.player_y = self.ground_y - 16
-            self.player_vy = 0
-            self.is_grounded = True
-            
-        # 4. Update Musuh (Patroli)
+        # 2. Update Musuh (Patroli)
         self.enemy_x += self.enemy_speed * self.enemy_dir * dt
         if self.enemy_x >= self.enemy_patrol_max:
             self.enemy_x = self.enemy_patrol_max
@@ -342,27 +295,25 @@ class Game:
             self.enemy_x = self.enemy_patrol_min
             self.enemy_dir = 1
             
-        # 5. Deteksi Tabrakan Player dengan Musuh
-        player_rect = pygame.Rect(self.player_x, self.player_y, 16, 16)
+        # 3. Deteksi Tabrakan Player dengan Musuh
+        player_rect = self.player.get_rect()
         enemy_rect = pygame.Rect(self.enemy_x, self.enemy_y, 16, 16)
         
-        if player_rect.colliderect(enemy_rect) and self.invincible_timer <= 0:
-            # Player kena damage
-            self.player_hp -= 20
-            self.invincible_timer = 1.0  # 1 detik invincibility
-            # Sedikit dorongan terpental (knockback)
-            self.player_vy = -80
-            self.player_vx = -self.enemy_dir * 100
-            
-            if self.player_hp <= 0:
-                self.player_hp = 0
-                self.current_state = STATE_GAME_OVER
+        if player_rect.colliderect(enemy_rect):
+            # Coba kurangi HP (berhasil jika invincible_timer sudah 0)
+            if self.player.take_damage(20):
+                # Sedikit dorongan terpental (knockback)
+                self.player.vy = -80
+                self.player.vx = -self.enemy_dir * 100
                 
-        # 6. Deteksi Tabrakan Player dengan Bendera Gol (Goal)
+                if self.player.hp <= 0:
+                    self.current_state = STATE_GAME_OVER
+                
+        # 4. Deteksi Tabrakan Player dengan Bendera Gol (Goal)
         goal_rect = pygame.Rect(self.goal_x, self.goal_y, 16, 24)
         if player_rect.colliderect(goal_rect):
-            self.player_gold += 25
-            self.player_xp += 50
+            self.player.gold += 25
+            self.player.xp += 50
             self.current_state = STATE_STAGE_CLEAR
 
     # --- RENDERING STATE ---
@@ -450,7 +401,7 @@ class Game:
         pygame.draw.rect(self.display, COL_WHITE, (self.npc_x + 9, self.npc_y + 3, 2, 2))  # Mata kanan
         
         # Petunjuk Dialog jika dekat
-        if abs(self.player_x - self.npc_x) < 24:
+        if abs(self.player.x - self.npc_x) < 24:
             draw_text(self.display, "ENTER untuk bicara", self.npc_x - 36, self.npc_y - 12, size=10, color=COL_WHITE)
             
         # 4. Gambar Goal (Tiang kayu dan Bendera Merah bergelombang)
@@ -470,26 +421,19 @@ class Game:
         pygame.draw.rect(self.display, (220, 200, 50), enemy_rect)  # Badan Musuh
         pygame.draw.rect(self.display, COL_RED, (self.enemy_x + (3 if self.enemy_dir == -1 else 10), self.enemy_y + 4, 3, 3))  # Mata merah sesuai arah jalan
         
-        # 6. Gambar Player (Kotak merah dengan mata)
-        # Efek kedip (flickering) jika invincible
-        if self.invincible_timer <= 0 or (pygame.time.get_ticks() // 100) % 2 == 0:
-            player_rect = pygame.Rect(self.player_x, self.player_y, 16, 16)
-            pygame.draw.rect(self.display, COL_RED, player_rect)
-            # Mata mengarah ke arah jalan
-            eye_offset = 11 if self.player_vx >= 0 else 2
-            pygame.draw.rect(self.display, COL_WHITE, (self.player_x + eye_offset, self.player_y + 3, 3, 3))
-            pygame.draw.rect(self.display, COL_BLACK, (self.player_x + eye_offset + (1 if self.player_vx >= 0 else 0), self.player_y + 4, 1, 1))
+        # 6. Gambar Player (memanggil method draw internal Player)
+        self.player.draw(self.display)
 
         # 7. Gambar HUD
         # Box HUD background
         hud_bg = RetroPanel(4, 4, 140, 32, bg_color=(20, 20, 20), border_color=COL_WHITE)
         hud_bg.draw(self.display)
         
-        self.hp_bar.draw(self.display, self.player_hp)
-        self.xp_bar.draw(self.display, self.player_xp)
+        self.hp_bar.draw(self.display, self.player.hp)
+        self.xp_bar.draw(self.display, self.player.xp)
         
-        draw_text(self.display, f"HP: {int(self.player_hp)}/{self.player_max_hp}", 96, 8, size=9, color=COL_WHITE)
-        draw_text(self.display, f"Gold: {self.player_gold}g", 96, 18, size=9, color=COL_GOLD)
+        draw_text(self.display, f"HP: {int(self.player.hp)}/{self.player.max_hp}", 96, 8, size=9, color=COL_WHITE)
+        draw_text(self.display, f"Gold: {self.player.gold}g", 96, 18, size=9, color=COL_GOLD)
 
     def draw_pause(self):
         # Overlay abu-abu transparan di latar belakang
@@ -523,8 +467,8 @@ class Game:
         
         # Informasi Statistik Player saat ini
         stats_y = 60
-        draw_text(self.display, f"Gold Kamu: {self.player_gold}g", DISPLAY_WIDTH // 2 - 120, stats_y, size=11, color=COL_GOLD)
-        draw_text(self.display, f"STAT: HP {self.player_max_hp} | Atk {self.player_atk} | Spd {self.player_speed}", DISPLAY_WIDTH // 2 - 120, stats_y + 12, size=11, color=COL_WHITE)
+        draw_text(self.display, f"Gold Kamu: {self.player.gold}g", DISPLAY_WIDTH // 2 - 120, stats_y, size=11, color=COL_GOLD)
+        draw_text(self.display, f"STAT: HP {self.player.max_hp} | Atk {self.player.atk} | Spd {self.player.speed}", DISPLAY_WIDTH // 2 - 120, stats_y + 12, size=11, color=COL_WHITE)
         
         # Render Tombol Upgrade
         for i, btn in enumerate(self.shop_buttons):
