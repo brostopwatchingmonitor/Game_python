@@ -1,512 +1,532 @@
 import pygame
 import sys
-import math
-from src.setting import (
-    WINDOW_WIDTH, WINDOW_HEIGHT, DISPLAY_WIDTH, DISPLAY_HEIGHT, FRAMERATE,
-    BG_COLOR, COL_GOLD, COL_ACCENT, COL_WHITE, COL_BLACK, COL_RED, COL_DARK_GRAY,
-    STATE_INTRO, STATE_MENU, STATE_PLAYING, STATE_PAUSE, STATE_DIALOGUE,
-    STATE_SHOP, STATE_STAGE_CLEAR, STATE_GAME_OVER, XP_BASE
-)
-from src.ui import draw_text, RetroPanel, RetroButton, ProgressBar, DialogueBox
-from src.player import Player
+import os
+from os.path import join
+from random import randint
+
+from settings import * 
+from sprites import *
+from player import Player
+from pathlib import Path
+from groups import AllSprites
+from support import *
+from timer import Timer
+from dialogue import DialogueManager
+from ui import UI as GameUI
+from game_state import GameState
+from stage import StageManager
+from background import Background
+from map import StageMap
 
 class Game:
     def __init__(self):
-        # 1. Inisialisasi Pygame & Window
         pygame.init()
+        # 1. Setup Window Fisik (Screen) & Canvas Internal (Display Surface)
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-        pygame.display.set_caption("Game Platformer Pixel Art 16x16")
+        self.display_surface = pygame.Surface((DISPLAY_WIDTH, DISPLAY_HEIGHT))
+        pygame.display.set_caption('Void Mermaid: Hasumi and the Shattered Cores')
         
-        # Display internal (logical surface 400x300)
-        self.display = pygame.Surface((DISPLAY_WIDTH, DISPLAY_HEIGHT))
-        
-        # Clock
         self.clock = pygame.time.Clock()
         self.running = True
+
+        # groups 
+        self.all_sprites = AllSprites()
+        self.collision_sprites = pygame.sprite.Group()
+        self.bullet_sprites = pygame.sprite.Group()
+        self.enemy_sprites = pygame.sprite.Group()
+
+        # Managers & states
+        self.state = GameState()
+        self.stage_mgr = StageManager()
+        self.stage_map = StageMap()
+        self.background = Background()
+        self.dialogue_manager = DialogueManager()
+        self.ui = GameUI()
         
-        # 2. Inisialisasi State Game
-        self.current_state = STATE_INTRO
+        self.player = None
+        self.boss = None
+        self.score = 0
+        self.loaded_save_data = None
+        self.exit_rect = None
+        self.stage_enemy_spawn_points = []
+
+        # Continuous enemy spawning variables
+        self.enemy_spawn_timer = 0.0
+        self.enemy_spawn_cooldown = 2.0
+
+        # Mulai dengan state INTRO typewriter
+        self.state.go_intro()
+        self.load_assets()
         
-        # 3. Inisialisasi Player (dari src/player.py)
-        self.player = Player(40, 200)
+        # Mulai musik latar belakang jika ada
+        if hasattr(self, 'audio') and 'music' in self.audio:
+            try:
+                self.audio['music'].play(loops=-1)
+            except Exception as e:
+                print(f"[Game] Gagal memutar musik: {e}")
+
+    def create_bullet(self, pos, direction):
+        if isinstance(direction, pygame.Vector2):
+            Bullet(self.bullet_surf, pos, direction, (self.all_sprites, self.bullet_sprites), mode="boss")
+        else:
+            x = pos[0] + direction * 34
+            bullet_pos = (x, pos[1])
+            Bullet(self.bullet_surf, bullet_pos, direction, (self.all_sprites, self.bullet_sprites), mode="default")
+            
+        # Spawn Muzzle Flash menggunakan VisualEffect generik & play sound
+        offset_x = 34 if (isinstance(direction, pygame.Vector2) and direction.x >= 0) or (not isinstance(direction, pygame.Vector2) and direction == 1) else -34
+        offset = pygame.Vector2(offset_x, 8)
         
-        # Level Konstanta & Objek
-        self.ground_y = 250
-        self.npc_x = 160
-        self.npc_y = 250 - 16  # Berdiri di atas tanah
-        self.goal_x = 340
-        self.goal_y = 250 - 24  # Bendera gol
+        shoot_sound = self.audio.get('shoot') if hasattr(self, 'audio') else None
         
-        # Patroli Musuh
-        self.enemy_x = 240
-        self.enemy_y = 250 - 16
-        self.enemy_speed = 40
-        self.enemy_dir = 1
-        self.enemy_patrol_min = 200
-        self.enemy_patrol_max = 300
+        VisualEffect(
+            pos=self.player.rect.center,
+            surf=self.fire_surf,
+            groups=self.all_sprites,
+            duration=100,
+            target_anchor=self.player,
+            offset=offset,
+            flip=self.player.flip,
+            sound=shoot_sound
+        )
+ 
+    def load_assets(self):
+        # Muat dan potong spritesheet dari assets/image/character/
+        self.player_animations = {}
+        base_char_path = join(BASE_DIR, '..', 'assets', 'image', 'character')
+        states = ['Idle', 'Walk', 'Run', 'Jump', 'Attack_1', 'Dead', 'Hurt']
         
-        # UI HUD
-        self.hp_bar = ProgressBar(10, 10, 80, 8, self.player.max_hp, self.player.max_hp, COL_RED)
-        self.xp_bar = ProgressBar(10, 20, 80, 5, self.player.xp, XP_BASE, COL_GOLD)
+        from support import slice_spritesheet
+        loaded_any = False
+        for state in states:
+            file_path = join(base_char_path, f"{state}.png")
+            state_key = state.lower()
+            if os.path.exists(file_path):
+                try:
+                    self.player_animations[state_key] = slice_spritesheet(file_path, 128, 128)
+                    loaded_any = True
+                except Exception as e:
+                    print(f"[Game] Warning: Gagal memotong spritesheet {state} ({e}).")
+                    self.player_animations[state_key] = []
+            else:
+                self.player_animations[state_key] = []
+                
+        if loaded_any:
+            self.player_frames = self.player_animations
+        else:
+            print("[Game] Warning: Tidak ada spritesheet karakter ditemukan. Menggunakan fallback geometris.")
+            self.player_frames = []
+            
+        try:
+            self.bullet_surf = import_image('..', 'assets', 'image', 'tilesets', 'bullet')
+            self.fire_surf = import_image('..', 'assets', 'image', 'tilesets', 'fire')
+        except Exception as e:
+            print(f"[Game] Warning: Gagal memuat bullet/fire image ({e}). Menggunakan fallback.")
+            self.bullet_surf = pygame.Surface((12, 6))
+            self.bullet_surf.fill((255, 210, 50)) # Gold bullet color
+            self.fire_surf = pygame.Surface((16, 16), pygame.SRCALPHA)
+            pygame.draw.circle(self.fire_surf, (0, 210, 200, 150), (8, 8), 8) # Cyan muzzle flash
+
+        # Muat semua audio kombat & musik
+        from support import audio_importer
+        self.audio = audio_importer('..', 'assets', 'audio')
+
+    def spawn_enemy(self):
+        import random
+        from enemy import BaseEnemy
         
-        # Dialogue Box
-        self.dialogue_box = DialogueBox(20, DISPLAY_HEIGHT - 65, DISPLAY_WIDTH - 40, 50)
+        st = self.stage_mgr.current
+        if not st or st.has_boss:
+            return
+
+        enemy_pool = st.enemy_pool
+        enemy_name = random.choice(enemy_pool)
         
-        # 4. Inisialisasi Tombol UI (Keyboard & Mouse compatible)
-        self.menu_index = 0
-        self.menu_buttons = [
-            RetroButton(DISPLAY_WIDTH // 2 - 60, 120, 120, 24, "Start Game", self.start_game),
-            RetroButton(DISPLAY_WIDTH // 2 - 60, 155, 120, 24, "Shop Upgrades", self.open_shop),
-            RetroButton(DISPLAY_WIDTH // 2 - 60, 190, 120, 24, "Exit Game", self.exit_game)
-        ]
+        if getattr(self, 'stage_enemy_spawn_points', None):
+            spawn_x, spawn_y = random.choice(self.stage_enemy_spawn_points)
+        else:
+            spawn_x = self.player.rect.centerx + WINDOW_WIDTH // 2 + random.randint(50, 200)
+            if spawn_x > self.map_width - 100:
+                spawn_x = self.player.rect.centerx - WINDOW_WIDTH // 2 - random.randint(50, 200)
+            spawn_x = max(50, min(self.map_width - 100, spawn_x))
+            
+            if enemy_name == "Crab":
+                spawn_y = self.map_height - 120
+            else:
+                spawn_y = random.randint(100, self.map_height - 180)
+            
+        BaseEnemy((spawn_x, spawn_y), enemy_name, (self.all_sprites, self.enemy_sprites), self.collision_sprites, self.player)
+
+    def start_stage(self, stage_idx):
+        # Bersihkan sprite lama sebelum memuat stage baru
+        self.all_sprites.empty()
+        self.collision_sprites.empty()
+        self.bullet_sprites.empty()
+        self.enemy_sprites.empty()
         
-        self.pause_index = 0
-        self.pause_buttons = [
-            RetroButton(DISPLAY_WIDTH // 2 - 60, 110, 120, 24, "Resume", self.resume_game),
-            RetroButton(DISPLAY_WIDTH // 2 - 60, 145, 120, 24, "Quit to Menu", self.quit_to_menu)
-        ]
+        st = self.stage_mgr.current
+        if st:
+            st.kill_count   = 0
+            st.boss_spawned = False
+            st.boss_dead    = False
+            st.completed    = False
         
-        self.shop_index = 0
-        self.shop_buttons = [
-            RetroButton(DISPLAY_WIDTH // 2 - 80, 110, 160, 22, "Upgrade HP (15g)", lambda: self.buy_upgrade(0)),
-            RetroButton(DISPLAY_WIDTH // 2 - 80, 140, 160, 22, "Upgrade Atk (10g)", lambda: self.buy_upgrade(1)),
-            RetroButton(DISPLAY_WIDTH // 2 - 80, 170, 160, 22, "Upgrade Spd (20g)", lambda: self.buy_upgrade(2)),
-            RetroButton(DISPLAY_WIDTH // 2 - 80, 205, 160, 22, "Back to Menu", self.quit_to_menu)
-        ]
+        self.boss = None
+        self.exit_rect = None
+        self.stage_enemy_spawn_points = []
+        self.enemy_spawn_timer = 0.0
         
-        # State Intro Timer & Fade
-        self.intro_timer = 0
-        self.intro_alpha = 255
-        self.intro_phase = "fade_in" # "fade_in", "hold", "fade_out"
-        
-    # --- AKSI BUTTONS ---
-    def start_game(self):
-        # Reset statistik player saat memulai permainan baru
-        self.player.reset(40, 200)
-        self.current_state = STATE_PLAYING
-        
-    def resume_game(self):
-        self.current_state = STATE_PLAYING
-        
-    def open_shop(self):
-        self.current_state = STATE_SHOP
-        self.shop_index = 0
-        
-    def quit_to_menu(self):
-        self.current_state = STATE_MENU
-        self.menu_index = 0
-        
-    def exit_game(self):
-        self.running = False
-        pygame.quit()
-        sys.exit()
-        
-    def buy_upgrade(self, idx):
-        item = self.shop_buttons[idx]  # Mengambil target menu berdasarkan index
-        costs = [15, 10, 20]           # Sesuai dengan harga pada setting
-        cost = costs[idx]
-        
-        if self.player.gold >= cost:
-            self.player.gold -= cost
-            if idx == 0:  # HP Upgrade
-                self.player.max_hp += 20
-                self.player.hp = self.player.max_hp
-                self.hp_bar.max_val = self.player.max_hp
-            elif idx == 1:  # ATK Upgrade
-                self.player.atk += 5
-            elif idx == 2:  # SPD Upgrade
-                self.player.speed += 20
-        
-    # --- LOOP UTAMA ---
+        if st:
+            self.enemy_spawn_cooldown = 200.0 / st.spawn_rate if st.spawn_rate > 0 else 5.0
+        else:
+            self.enemy_spawn_cooldown = 2.0
+
+        # Load stage dari STAGES config
+        from stage import STAGES
+        stage_cfg = STAGES.get(stage_idx + 1)
+        if not stage_cfg:
+            print(f"Error: Stage index {stage_idx} not found in configuration.")
+            return
+
+        self.all_sprites.set_camera_mode(stage_cfg["camera"])
+
+        # Coba muat peta TMX, jika gagal lakukan fallback ke autotiling prosedural
+        try:
+            tmx_path = join(BASE_DIR, '..', stage_cfg["map"])
+            if not os.path.exists(tmx_path):
+                raise FileNotFoundError(f"Peta TMX tidak ada di {tmx_path}")
+            
+            from pytmx.util_pygame import load_pygame
+            tmx_data = load_pygame(tmx_path)
+            
+            tile_scale = stage_cfg.get("tile_scale", 1.0)
+            scaled_tilewidth = int(tmx_data.tilewidth * tile_scale)
+            scaled_tileheight = int(tmx_data.tileheight * tile_scale)
+
+            self.map_width = tmx_data.width * scaled_tilewidth
+            self.map_height = tmx_data.height * scaled_tileheight
+            
+            # Buat fisik map dari TMX
+            for layer in tmx_data.visible_layers:
+                if hasattr(layer, 'data'):
+                    for x, y, surf in layer.tiles():
+                        pos = (x * scaled_tilewidth, y * scaled_tileheight)
+                        scaled_surf = pygame.transform.scale(surf, (scaled_tilewidth, scaled_tileheight))
+                        if layer.name in ('ground', 'wood', 'wall'):
+                            Sprites(pos, scaled_surf, (self.all_sprites, self.collision_sprites))
+                        else:
+                            Sprites(pos, scaled_surf, self.all_sprites)
+
+            # Cari posisi objek
+            player_pos = (100, 100)
+            boss_pos = (self.map_width // 2, self.map_height // 2)
+
+            for obj in tmx_data.objects:
+                obj_x = obj.x * tile_scale
+                obj_y = obj.y * tile_scale
+                obj_w = obj.width * tile_scale
+                obj_h = obj.height * tile_scale
+
+                if obj.name == 'player':
+                    player_pos = (obj_x, obj_y)
+                elif obj.name == 'exit':
+                    self.exit_rect = pygame.Rect(obj_x, obj_y, obj_w, obj_h)
+                elif obj.name == 'boss':
+                    boss_pos = (obj_x, obj_y)
+                elif obj.name == 'enemy':
+                    self.stage_enemy_spawn_points.append((obj_x, obj_y))
+                    
+        except Exception as e:
+            # Fallback Map Autotiler jika TMX tidak ditemukan
+            print(f"[Game] Fallback: Menggunakan autotiler prosedural karena TMX gagal dimuat ({e})")
+            from tilemap import make_stage_map, Autotiler, TILE_SIZE as OLD_TILE_SIZE
+            
+            grid = make_stage_map(stage_idx)
+            tiler = Autotiler()
+            
+            self.map_width = len(grid[0]) * OLD_TILE_SIZE
+            self.map_height = len(grid) * OLD_TILE_SIZE
+            
+            for r in range(len(grid)):
+                for c in range(len(grid[r])):
+                    tile_char = grid[r][c]
+                    pos = (c * OLD_TILE_SIZE, r * OLD_TILE_SIZE)
+                    if tile_char == '#':
+                        tile_idx = tiler.get_tile_index(grid, r, c)
+                        if tile_idx and tile_idx in tiler.tiles:
+                            surf = tiler.tiles[tile_idx]
+                        else:
+                            # Fallback blok warna solid jika gambar tileset juga absen
+                            surf = pygame.Surface((OLD_TILE_SIZE, OLD_TILE_SIZE))
+                            surf.fill((30, 45, 75)) # Navy-blue block
+                            pygame.draw.rect(surf, (0, 180, 200), surf.get_rect(), 2)
+                        
+                        Sprites(pos, surf, (self.all_sprites, self.collision_sprites))
+            
+            # Default Objek posisi untuk Fallback Map
+            player_pos = (150, 400)
+            self.stage_enemy_spawn_points = [(600, 600), (1200, 600), (2000, 600)]
+            self.exit_rect = pygame.Rect(self.map_width - 160, self.map_height - 350, 64, 120)
+            boss_pos = (self.map_width // 2, self.map_height - 300)
+
+        # Inisialisasi Player
+        self.player = Player(player_pos, self.all_sprites, self.collision_sprites, self.player_frames, self.create_bullet)
+        self.player.movement_mode = stage_cfg["camera"]
+
+        # Spawn Boss jika Stage 3, jika tidak spawn musuh biasa
+        if stage_cfg.get("has_boss"):
+            from enemy import BossEnemy
+            self.boss = BossEnemy(boss_pos, "Lord HyperEnd", (self.all_sprites, self.enemy_sprites), self.collision_sprites, self.player)
+            if st:
+                st.boss_spawned = True
+        else:
+            from enemy import BaseEnemy
+            import random
+            enemy_types_pool = stage_cfg.get("enemy_pool", ["Crab", "Jellyfish"])
+            
+            # Spawn awal di titik spawn
+            if self.stage_enemy_spawn_points:
+                for pt in self.stage_enemy_spawn_points:
+                    enemy_type = random.choice(enemy_types_pool)
+                    BaseEnemy(pt, enemy_type, (self.all_sprites, self.enemy_sprites), self.collision_sprites, self.player)
+
+        # Terapkan data save jika dimuat
+        if getattr(self, 'loaded_save_data', None) is not None:
+            from save_manager import SaveManager
+            SaveManager.apply(self.loaded_save_data, self.player, None)
+            self.score = self.loaded_save_data.get("score", 0)
+            self.loaded_save_data = None
+
+        # Setup ukuran kamera
+        self.player.map_width = self.map_width
+        self.player.map_height = self.map_height
+        self.all_sprites.map_width = self.map_width
+        self.all_sprites.map_height = self.map_height
+
     def run(self):
         while self.running:
-            # Hitung delta time (dt) dalam detik
             dt = self.clock.tick(FRAMERATE) / 1000.0
-            if dt > 0.1:  # Hindari lonjakan fisika jika ngelag
+            if dt > 0.1:
                 dt = 0.1
-                
-            self.handle_events()
-            self.update(dt)
-            self.draw()
-            
-    def handle_events(self):
-        # Dapatkan posisi mouse dan konversi ke koordinat display internal (400x300)
-        mx, my = pygame.mouse.get_pos()
-        scale_x = WINDOW_WIDTH / DISPLAY_WIDTH
-        scale_y = WINDOW_HEIGHT / DISPLAY_HEIGHT
-        logical_mouse_pos = (mx / scale_x, my / scale_y)
-        
-        events = pygame.event.get()
-        for event in events:
-            if event.type == pygame.QUIT:
-                self.exit_game()
-                
-            # Input Keyboard Universal
-            if event.type == pygame.KEYDOWN:
-                # Toggle Pause
-                if event.key == pygame.K_ESCAPE:
-                    if self.current_state == STATE_PLAYING:
-                        self.current_state = STATE_PAUSE
-                        self.pause_index = 0
-                    elif self.current_state == STATE_PAUSE:
-                        self.current_state = STATE_PLAYING
-                
-            # Penanganan Event Berdasarkan State
-            if self.current_state == STATE_INTRO:
-                if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
-                    # Skip intro langsung ke menu utama
-                    self.current_state = STATE_MENU
+
+            # ── 1. Event Handling per State ──
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.running = False 
+                elif event.type == pygame.KEYDOWN:
+                    # Intro State
+                    if self.state.is_intro:
+                        if event.key == pygame.K_RETURN:
+                            if self.ui._intro_done:
+                                self.state.go_menu()
+                            else:
+                                self.ui._intro_done = True
+                                self.ui._intro_line = len(self.ui.INTRO_LINES)
                     
-            elif self.current_state == STATE_MENU:
-                # Hover Tombol dengan Mouse
-                for i, btn in enumerate(self.menu_buttons):
-                    if btn.check_hover(logical_mouse_pos):
-                        self.menu_index = i
-                
-                if event.type == pygame.KEYDOWN:
-                    if event.key in (pygame.K_UP, pygame.K_w):
-                        self.menu_index = (self.menu_index - 1) % len(self.menu_buttons)
-                    elif event.key in (pygame.K_DOWN, pygame.K_s):
-                        self.menu_index = (self.menu_index + 1) % len(self.menu_buttons)
-                    elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                        self.menu_buttons[self.menu_index].action()
-                        
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    for btn in self.menu_buttons:
-                        if btn.is_hovered and btn.action:
-                            btn.action()
-                            
-            elif self.current_state == STATE_PLAYING:
-                if event.type == pygame.KEYDOWN:
-                    # Mulai Dialog dengan NPC jika dekat
-                    if event.key in (pygame.K_RETURN, pygame.K_e):
-                        if abs(self.player.x - self.npc_x) < 24:
-                            self.current_state = STATE_DIALOGUE
-                            self.dialogue_box.start_dialogue(
-                                "Kakek Bijak",
-                                [
-                                    "Halo, penualang cilik!",
-                                    "Ada portal bendera hijau di sebelah kanan layar.",
-                                    "Gunakan tombol A/D untuk jalan dan SPACE untuk melompat.",
-                                    "Hindari musuh kuning yang berkeliaran itu!",
-                                    "Jika kamu terluka, pergilah ke Toko Upgrade di menu utama."
-                                ]
-                            )
-                            
-            elif self.current_state == STATE_PAUSE:
-                for i, btn in enumerate(self.pause_buttons):
-                    if btn.check_hover(logical_mouse_pos):
-                        self.pause_index = i
-                        
-                if event.type == pygame.KEYDOWN:
-                    if event.key in (pygame.K_UP, pygame.K_w):
-                        self.pause_index = (self.pause_index - 1) % len(self.pause_buttons)
-                    elif event.key in (pygame.K_DOWN, pygame.K_s):
-                        self.pause_index = (self.pause_index + 1) % len(self.pause_buttons)
-                    elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                        self.pause_buttons[self.pause_index].action()
-                        
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    for btn in self.pause_buttons:
-                        if btn.is_hovered and btn.action:
-                            btn.action()
-                            
-            elif self.current_state == STATE_DIALOGUE:
-                if event.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
-                    # Cek key untuk lanjut text dialog
-                    if event.type == pygame.MOUSEBUTTONDOWN or event.key in (pygame.K_SPACE, pygame.K_RETURN):
-                        has_more = self.dialogue_box.next_line()
-                        if not has_more:
-                            self.current_state = STATE_PLAYING
-                            
-            elif self.current_state == STATE_SHOP:
-                for i, btn in enumerate(self.shop_buttons):
-                    if btn.check_hover(logical_mouse_pos):
-                        self.shop_index = i
-                        
-                if event.type == pygame.KEYDOWN:
-                    if event.key in (pygame.K_UP, pygame.K_w):
-                        self.shop_index = (self.shop_index - 1) % len(self.shop_buttons)
-                    elif event.key in (pygame.K_DOWN, pygame.K_s):
-                        self.shop_index = (self.shop_index + 1) % len(self.shop_buttons)
-                    elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                        self.shop_buttons[self.shop_index].action()
-                    elif event.key == pygame.K_ESCAPE:
-                        self.quit_to_menu()
-                        
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    for btn in self.shop_buttons:
-                        if btn.is_hovered and btn.action:
-                            btn.action()
-                            
-            elif self.current_state in (STATE_STAGE_CLEAR, STATE_GAME_OVER):
-                if event.type == pygame.KEYDOWN:
-                    if event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                        if self.current_state == STATE_STAGE_CLEAR:
-                            # Lanjut main dengan data yang sudah di-upgrade
-                            self.player.x = 40
-                            self.player.y = 200
-                            self.player.vx = 0
-                            self.player.vy = 0
-                            self.player.is_grounded = False
-                            self.current_state = STATE_PLAYING
+                    # Menu Utama
+                    elif self.state.is_menu:
+                        if event.key == pygame.K_RETURN:
+                            from save_manager import SaveManager
+                            SaveManager.delete()
+                            self.state.go_map()
+                        elif event.key == pygame.K_l:
+                            from save_manager import SaveManager
+                            save_data = SaveManager.load()
+                            if save_data:
+                                self.stage_mgr.current_idx = save_data.get("stage", 0)
+                                self.loaded_save_data = save_data
+                                self.state.go_map()
+                            else:
+                                self.state.go_map()
+                        elif event.key == pygame.K_ESCAPE:
+                            self.running = False
+
+                    # Layar Peta (Stage Select)
+                    elif self.state.is_map:
+                        if event.key == pygame.K_b or event.key == pygame.K_ESCAPE:
+                            self.state.go_menu()
                         else:
-                            # Restart setelah game over
-                            self.start_game()
-                    elif event.key == pygame.K_ESCAPE:
-                        self.quit_to_menu()
+                            selected = self.stage_map.handle_key(event.key, self.stage_mgr)
+                            if selected is not None:
+                                self.start_stage(selected)
+                                
+                                def on_dialogue_complete():
+                                    self.state.go_playing()
+                                
+                                self.dialogue_manager.start_cutscene(
+                                    f"intro_stage_{selected}", 
+                                    on_complete_callback=on_dialogue_complete
+                                )
+                                self.state.go_dialogue()
 
-    def update(self, dt):
-        if self.current_state == STATE_INTRO:
-            self.intro_timer += dt
-            if self.intro_phase == "fade_in":
-                self.intro_alpha -= int(300 * dt)
-                if self.intro_alpha <= 0:
-                    self.intro_alpha = 0
-                    self.intro_phase = "hold"
-                    self.intro_timer = 0
-            elif self.intro_phase == "hold":
-                if self.intro_timer > 1.5:  # tahan 1.5 detik
-                    self.intro_phase = "fade_out"
-            elif self.intro_phase == "fade_out":
-                self.intro_alpha += int(300 * dt)
-                if self.intro_alpha >= 255:
-                    self.intro_alpha = 255
-                    self.current_state = STATE_MENU
+                    # Layar Dialog Cutscene
+                    elif self.state.is_dialogue:
+                        self.dialogue_manager.handle_key(event.key)
+
+                    # Layar Game Over
+                    elif self.state.is_game_over:
+                        if event.key == pygame.K_r:
+                            self.score = 0
+                            self.start_stage(self.stage_mgr.current_idx)
+                            self.state.go_playing()
+                        elif event.key == pygame.K_m:
+                            self.state.go_menu()
+
+                    # Layar Win
+                    elif self.state.is_win:
+                        if event.key == pygame.K_r or event.key == pygame.K_RETURN:
+                            self.score = 0
+                            self.stage_mgr.reset()
+                            self.state.go_menu()
+
+            # ── 2. Update Logic per State ──
+            if self.state.is_intro:
+                self.ui.update_intro()
+            elif self.state.is_dialogue:
+                self.dialogue_manager.update()
+            elif self.state.is_playing:
+                self.all_sprites.update(dt)
+                self.background.update()
+
+                # Pass camera offset to player
+                if self.player:
+                    self.player.camera_offset = self.all_sprites.offset
+
+                # Spawning musuh berkelanjutan secara real-time
+                if self.stage_mgr.current and not self.stage_mgr.current.has_boss:
+                    self.enemy_spawn_timer += dt
+                    if self.enemy_spawn_timer >= self.enemy_spawn_cooldown:
+                        self.enemy_spawn_timer = 0.0
+                        self.spawn_enemy()
+                        self.enemy_spawn_cooldown = max(2.5, self.enemy_spawn_cooldown - 0.05)
+
+                # Collision checks
+                # 1. Peluru player menabrak musuh (Filter Dua Fase)
+                for bullet in self.bullet_sprites:
+                    # Tahap 1: Filter Kotak Bounding Box (Sangat Cepat)
+                    potential_hits = pygame.sprite.spritecollide(bullet, self.enemy_sprites, False)
+                    if potential_hits:
+                        for enemy in potential_hits:
+                            # Tahap 2: Verifikasi Pixel-Perfect dengan Mask
+                            if pygame.sprite.collide_mask(bullet, enemy):
+                                bullet.kill()
+                                
+                                # Ledakkan visual hit spark & mainkan SFX tabrakan
+                                impact_sound = self.audio.get('impact') if hasattr(self, 'audio') else None
+                                VisualEffect(
+                                    pos=bullet.rect.center,
+                                    surf=self.fire_surf,
+                                    groups=self.all_sprites,
+                                    duration=100,
+                                    sound=impact_sound
+                                )
+                                
+                                if hasattr(enemy, 'take_damage'):
+                                    enemy.take_damage(self.player.attack)
+                                    if enemy.hp <= 0:
+                                        self.score += 100
+                                        if hasattr(enemy, 'xp'):
+                                            stage_idx = self.stage_mgr.current_idx if self.stage_mgr else 0
+                                            self.player.gain_xp(enemy.xp, stage_idx)
+                                        if self.stage_mgr.current:
+                                            self.stage_mgr.current.register_kill()
+                                break # Peluru hancur, hentikan verifikasi musuh lain untuk peluru ini
+
+                # 2. Musuh menabrak Player (Filter Dua Fase)
+                potential_player_hits = pygame.sprite.spritecollide(self.player, self.enemy_sprites, False)
+                if potential_player_hits and not self.player.invincible:
+                    for enemy in potential_player_hits:
+                        # Tahap 2: Verifikasi Pixel-Perfect dengan Mask
+                        if pygame.sprite.collide_mask(self.player, enemy):
+                            self.player.hp = max(0, self.player.hp - (enemy.damage * 0.05))
+                            if self.player.hp <= 0:
+                                print("Player mati!")
+                                self.state.go_game_over()
+                            break # Hentikan tabrakan tambahan pada frame ini
+
+                # 3. Cek Stage Clear / Progress ke stage selanjutnya
+                if self.stage_mgr.current:
+                    if not self.stage_mgr.current.completed and self.stage_mgr.current.kill_count >= self.stage_mgr.current.kill_target:
+                        self.stage_mgr.current.completed = True
+                        print("Misi selesai! Temukan portal keluar.")
                     
-        elif self.current_state == STATE_PLAYING:
-            self.update_physics(dt)
-            
-        elif self.current_state == STATE_DIALOGUE:
-            self.dialogue_box.update()
+                    # Portal exit colliderect
+                    if self.stage_mgr.current.completed and self.exit_rect and self.player.rect.colliderect(self.exit_rect):
+                        current_idx = self.stage_mgr.current_idx
+                        clear_key = f"clear_stage_{current_idx}"
+                        
+                        def on_clear_dialogue_complete():
+                            if self.stage_mgr.is_last_stage:
+                                def on_win_ending_complete():
+                                    self.state.go_win()
+                                self.dialogue_manager.start_cutscene("win_ending", on_complete_callback=on_win_ending_complete)
+                                self.state.go_dialogue()
+                            else:
+                                self.stage_mgr.advance()
+                                next_idx = self.stage_mgr.current_idx
+                                self.start_stage(next_idx)
+                                
+                                from save_manager import SaveManager
+                                SaveManager.save(self.player, next_idx, self.score, 0, [])
+                                
+                                def on_next_intro_complete():
+                                    self.state.go_playing()
+                                self.dialogue_manager.start_cutscene(f"intro_stage_{next_idx}", on_complete_callback=on_next_intro_complete)
+                                self.state.go_dialogue()
+                                
+                        self.dialogue_manager.start_cutscene(clear_key, on_complete_callback=on_clear_dialogue_complete)
+                        self.state.go_dialogue()
+                    
+                    # Jika Boss dikalahkan di Stage 3
+                    if self.boss and not self.boss.alive() and not self.stage_mgr.current.completed:
+                        self.stage_mgr.current.completed = True
+                        self.stage_mgr.current.boss_dead = True
+                        
+                        current_idx = self.stage_mgr.current_idx
+                        clear_key = f"clear_stage_{current_idx}"
+                        
+                        def on_clear_dialogue_complete():
+                            def on_win_ending_complete():
+                                self.state.go_win()
+                            self.dialogue_manager.start_cutscene("win_ending", on_complete_callback=on_win_ending_complete)
+                            self.state.go_dialogue()
+                            
+                        self.dialogue_manager.start_cutscene(clear_key, on_complete_callback=on_clear_dialogue_complete)
+                        self.state.go_dialogue()
 
-    def update_physics(self, dt):
-        # 1. Input & Pergerakan Player
-        keys = pygame.key.get_pressed()
-        self.player.handle_input(keys)
-        self.player.update(dt, self.ground_y, DISPLAY_WIDTH)
-            
-        # 2. Update Musuh (Patroli)
-        self.enemy_x += self.enemy_speed * self.enemy_dir * dt
-        if self.enemy_x >= self.enemy_patrol_max:
-            self.enemy_x = self.enemy_patrol_max
-            self.enemy_dir = -1
-        elif self.enemy_x <= self.enemy_patrol_min:
-            self.enemy_x = self.enemy_patrol_min
-            self.enemy_dir = 1
-            
-        # 3. Deteksi Tabrakan Player dengan Musuh
-        player_rect = self.player.get_rect()
-        enemy_rect = pygame.Rect(self.enemy_x, self.enemy_y, 16, 16)
-        
-        if player_rect.colliderect(enemy_rect):
-            # Coba kurangi HP (berhasil jika invincible_timer sudah 0)
-            if self.player.take_damage(20):
-                # Sedikit dorongan terpental (knockback)
-                self.player.vy = -80
-                self.player.vx = -self.enemy_dir * 100
-                
-                if self.player.hp <= 0:
-                    self.current_state = STATE_GAME_OVER
-                
-        # 4. Deteksi Tabrakan Player dengan Bendera Gol (Goal)
-        goal_rect = pygame.Rect(self.goal_x, self.goal_y, 16, 24)
-        if player_rect.colliderect(goal_rect):
-            self.player.gold += 25
-            self.player.xp += 50
-            self.current_state = STATE_STAGE_CLEAR
+            # ── 3. Render per State ──
+            # Bersihkan logical surface
+            self.display_surface.fill((0, 5, 15))
 
-    # --- RENDERING STATE ---
-    def draw(self):
-        # Bersihkan display internal
-        self.display.fill(BG_COLOR)
-        
-        # Gambar sesuai State saat ini
-        if self.current_state == STATE_INTRO:
-            self.draw_intro()
-        elif self.current_state == STATE_MENU:
-            self.draw_menu()
-        elif self.current_state == STATE_PLAYING:
-            self.draw_playing()
-        elif self.current_state == STATE_PAUSE:
-            # Gambar playing di latar belakang terlebih dahulu
-            self.draw_playing()
-            self.draw_pause()
-        elif self.current_state == STATE_DIALOGUE:
-            self.draw_playing()
-            self.draw_dialogue()
-        elif self.current_state == STATE_SHOP:
-            self.draw_shop()
-        elif self.current_state == STATE_STAGE_CLEAR:
-            self.draw_playing()
-            self.draw_stage_clear()
-        elif self.current_state == STATE_GAME_OVER:
-            self.draw_playing()
-            self.draw_game_over()
-            
-        # Lakukan Scale-Up dari display (400x300) ke screen utama (800x600)
-        scaled_display = pygame.transform.scale(self.display, self.screen.get_size())
-        self.screen.blit(scaled_display, (0, 0))
-        
-        # Update layar fisik
-        pygame.display.update()
+            if self.state.is_intro:
+                self.ui.draw_intro(self.display_surface)
+            elif self.state.is_menu:
+                import os
+                from save_manager import SAVE_PATH
+                has_save = os.path.exists(SAVE_PATH)
+                self.ui.draw_menu(self.display_surface, has_save=has_save)
+            elif self.state.is_map:
+                self.stage_map.draw(self.display_surface, self.stage_mgr)
+            elif self.state.is_playing:
+                if self.player:
+                    self.background.draw(self.display_surface, self.player.rect.centerx - WINDOW_WIDTH // 2)
+                    self.all_sprites.draw(self.player.rect.center, self.display_surface)
+                    self.ui.draw_hud(self.display_surface, self.player, score=self.score, stage=self.stage_mgr.current, skill_manager=None)
+                    if self.boss and self.boss.alive():
+                        self.ui.draw_boss_bar(self.display_surface, self.boss)
+            elif self.state.is_dialogue:
+                if self.player:
+                    self.background.draw(self.display_surface, self.player.rect.centerx - WINDOW_WIDTH // 2)
+                    self.all_sprites.draw(self.player.rect.center, self.display_surface)
+                self.dialogue_manager.draw(self.display_surface)
+            elif self.state.is_game_over:
+                self.ui.draw_game_over(self.display_surface, score=self.score, kill_count=self.stage_mgr.current.kill_count if self.stage_mgr.current else 0, level=self.player.level if self.player else 1)
+            elif self.state.is_win:
+                self.ui.draw_win(self.display_surface, score=self.score, kill_count=self.stage_mgr.current.kill_count if self.stage_mgr.current else 0, level=self.player.level if self.player else 1)
 
-    def draw_intro(self):
-        self.display.fill(COL_BLACK)
-        # Menampilkan teks logo pembuat
-        draw_text(self.display, "ANTIGRAVITY DEV", DISPLAY_WIDTH // 2, DISPLAY_HEIGHT // 2 - 10, size=18, color=COL_ACCENT, center=True)
-        draw_text(self.display, "PRESENTS", DISPLAY_WIDTH // 2, DISPLAY_HEIGHT // 2 + 10, size=12, color=COL_WHITE, center=True)
-        
-        # Lapisan penutup hitam untuk efek fade in/out
-        fade_surface = pygame.Surface((DISPLAY_WIDTH, DISPLAY_HEIGHT))
-        fade_surface.fill(COL_BLACK)
-        fade_surface.set_alpha(self.intro_alpha)
-        self.display.blit(fade_surface, (0, 0))
+            # Lakukan Scale-Up dari display_surface ke screen utama pemain
+            scaled_display = pygame.transform.scale(self.display_surface, self.screen.get_size())
+            self.screen.blit(scaled_display, (0, 0))
+            pygame.display.update()
 
-    def draw_menu(self):
-        # Background Hiasan Langit & Bukit Sederhana
-        pygame.draw.rect(self.display, (135, 206, 235), (0, 0, DISPLAY_WIDTH, 200))  # Langit
-        pygame.draw.rect(self.display, (100, 200, 100), (0, 200, DISPLAY_WIDTH, DISPLAY_HEIGHT - 200))  # Bukit
-        
-        # Efek Tulisan Mengapung (Floating)
-        float_y = DISPLAY_HEIGHT // 2 - 70 + int(math.sin(pygame.time.get_ticks() / 200) * 4)
-        
-        # Bayangan Teks Judul
-        draw_text(self.display, "PIXEL PLATFORMER", DISPLAY_WIDTH // 2 + 2, float_y + 2, size=24, color=COL_BLACK, center=True)
-        draw_text(self.display, "PIXEL PLATFORMER", DISPLAY_WIDTH // 2, float_y, size=24, color=COL_GOLD, center=True)
-        
-        # Render Tombol Menu
-        for i, btn in enumerate(self.menu_buttons):
-            btn.draw(self.display, is_selected=(i == self.menu_index))
-            
-        # Petunjuk Kontrol
-        draw_text(self.display, "Arah / WASD: Pilih | ENTER / Klik: OK", DISPLAY_WIDTH // 2, DISPLAY_HEIGHT - 20, size=12, color=COL_BLACK, center=True)
-
-    def draw_playing(self):
-        # 1. Background langit biru cerah
-        self.display.fill((135, 206, 235))
-        
-        # 2. Gambar Tanah (Ground Grid 16x16px sederhana)
-        pygame.draw.rect(self.display, (101, 67, 33), (0, self.ground_y, DISPLAY_WIDTH, DISPLAY_HEIGHT - self.ground_y))  # Tanah cokelat
-        pygame.draw.rect(self.display, (34, 139, 34), (0, self.ground_y, DISPLAY_WIDTH, 4))  # Rumput hijau atas tanah
-        
-        # Grid visual 16px untuk memperjelas skala pixel art
-        for x in range(0, DISPLAY_WIDTH, 16):
-            pygame.draw.line(self.display, (90, 60, 30), (x, self.ground_y + 4), (x, DISPLAY_HEIGHT), 1)
-            
-        # 3. Gambar NPC (Kotak biru kecil dengan wajah sederhana)
-        npc_rect = pygame.Rect(self.npc_x, self.npc_y, 16, 16)
-        pygame.draw.rect(self.display, (50, 100, 240), npc_rect)  # Badan NPC
-        pygame.draw.rect(self.display, COL_WHITE, (self.npc_x + 3, self.npc_y + 3, 2, 2))  # Mata kiri
-        pygame.draw.rect(self.display, COL_WHITE, (self.npc_x + 9, self.npc_y + 3, 2, 2))  # Mata kanan
-        
-        # Petunjuk Dialog jika dekat
-        if abs(self.player.x - self.npc_x) < 24:
-            draw_text(self.display, "ENTER untuk bicara", self.npc_x - 36, self.npc_y - 12, size=10, color=COL_WHITE)
-            
-        # 4. Gambar Goal (Tiang kayu dan Bendera Merah bergelombang)
-        pygame.draw.rect(self.display, (150, 75, 0), (self.goal_x + 2, self.goal_y, 2, 24))  # Tiang
-        # Animasi bendera bergelombang
-        wave_offset = int(math.sin(pygame.time.get_ticks() / 150) * 2)
-        flag_points = [
-            (self.goal_x + 4, self.goal_y),
-            (self.goal_x + 16 + wave_offset, self.goal_y + 4),
-            (self.goal_x + 4, self.goal_y + 8)
-        ]
-        pygame.draw.polygon(self.display, COL_RED, flag_points)
-        draw_text(self.display, "GOAL", self.goal_x - 6, self.goal_y - 10, size=10, color=COL_WHITE)
-
-        # 5. Gambar Patroli Musuh (Kotak kuning dengan mata merah)
-        enemy_rect = pygame.Rect(self.enemy_x, self.enemy_y, 16, 16)
-        pygame.draw.rect(self.display, (220, 200, 50), enemy_rect)  # Badan Musuh
-        pygame.draw.rect(self.display, COL_RED, (self.enemy_x + (3 if self.enemy_dir == -1 else 10), self.enemy_y + 4, 3, 3))  # Mata merah sesuai arah jalan
-        
-        # 6. Gambar Player (memanggil method draw internal Player)
-        self.player.draw(self.display)
-
-        # 7. Gambar HUD
-        # Box HUD background
-        hud_bg = RetroPanel(4, 4, 140, 32, bg_color=(20, 20, 20), border_color=COL_WHITE)
-        hud_bg.draw(self.display)
-        
-        self.hp_bar.draw(self.display, self.player.hp)
-        self.xp_bar.draw(self.display, self.player.xp)
-        
-        draw_text(self.display, f"HP: {int(self.player.hp)}/{self.player.max_hp}", 96, 8, size=9, color=COL_WHITE)
-        draw_text(self.display, f"Gold: {self.player.gold}g", 96, 18, size=9, color=COL_GOLD)
-
-    def draw_pause(self):
-        # Overlay abu-abu transparan di latar belakang
-        overlay = pygame.Surface((DISPLAY_WIDTH, DISPLAY_HEIGHT))
-        overlay.fill(COL_BLACK)
-        overlay.set_alpha(150)
-        self.display.blit(overlay, (0, 0))
-        
-        # Panel Pause Card
-        panel = RetroPanel(DISPLAY_WIDTH // 2 - 75, DISPLAY_HEIGHT // 2 - 60, 150, 120)
-        panel.draw(self.display)
-        
-        draw_text(self.display, "PAUSED", DISPLAY_WIDTH // 2, DISPLAY_HEIGHT // 2 - 40, size=18, color=COL_GOLD, center=True)
-        
-        # Render Tombol Pause
-        for i, btn in enumerate(self.pause_buttons):
-            btn.draw(self.display, is_selected=(i == self.pause_index))
-
-    def draw_dialogue(self):
-        # Update dan Gambar Dialog Box langsung di canvas display
-        self.dialogue_box.draw(self.display)
-
-    def draw_shop(self):
-        self.display.fill((45, 30, 25))  # Latar belakang interior kayu tua
-        
-        # Panel Shop Utama
-        panel = RetroPanel(20, 20, DISPLAY_WIDTH - 40, DISPLAY_HEIGHT - 40)
-        panel.draw(self.display)
-        
-        draw_text(self.display, "OLD MAN'S UPGRADE SHOP", DISPLAY_WIDTH // 2, 35, size=16, color=COL_GOLD, center=True)
-        
-        # Informasi Statistik Player saat ini
-        stats_y = 60
-        draw_text(self.display, f"Gold Kamu: {self.player.gold}g", DISPLAY_WIDTH // 2 - 120, stats_y, size=11, color=COL_GOLD)
-        draw_text(self.display, f"STAT: HP {self.player.max_hp} | Atk {self.player.atk} | Spd {self.player.speed}", DISPLAY_WIDTH // 2 - 120, stats_y + 12, size=11, color=COL_WHITE)
-        
-        # Render Tombol Upgrade
-        for i, btn in enumerate(self.shop_buttons):
-            btn.draw(self.display, is_selected=(i == self.shop_index))
-            
-        # Catatan/Keterangan di bagian bawah
-        draw_text(self.display, "Tekan ESC untuk kembali ke Menu Utama", DISPLAY_WIDTH // 2, DISPLAY_HEIGHT - 35, size=10, color=COL_ACCENT, center=True)
-
-    def draw_stage_clear(self):
-        # Overlay transparan hijau gelap
-        overlay = pygame.Surface((DISPLAY_WIDTH, DISPLAY_HEIGHT))
-        overlay.fill((20, 80, 20))
-        overlay.set_alpha(180)
-        self.display.blit(overlay, (0, 0))
-        
-        panel = RetroPanel(DISPLAY_WIDTH // 2 - 90, DISPLAY_HEIGHT // 2 - 50, 180, 100)
-        panel.draw(self.display)
-        
-        draw_text(self.display, "STAGE CLEAR!", DISPLAY_WIDTH // 2, DISPLAY_HEIGHT // 2 - 35, size=18, color=COL_GOLD, center=True)
-        draw_text(self.display, "Hadiah: +25 Gold & +50 XP", DISPLAY_WIDTH // 2, DISPLAY_HEIGHT // 2 - 5, size=11, color=COL_WHITE, center=True)
-        
-        # Animasi Tekan Enter berkedip
-        if (pygame.time.get_ticks() // 500) % 2 == 0:
-            draw_text(self.display, "Tekan ENTER untuk Lanjut", DISPLAY_WIDTH // 2, DISPLAY_HEIGHT // 2 + 25, size=11, color=COL_ACCENT, center=True)
-
-    def draw_game_over(self):
-        # Overlay transparan merah gelap
-        overlay = pygame.Surface((DISPLAY_WIDTH, DISPLAY_HEIGHT))
-        overlay.fill((80, 20, 20))
-        overlay.set_alpha(180)
-        self.display.blit(overlay, (0, 0))
-        
-        panel = RetroPanel(DISPLAY_WIDTH // 2 - 90, DISPLAY_HEIGHT // 2 - 50, 180, 100)
-        panel.draw(self.display)
-        
-        draw_text(self.display, "GAME OVER", DISPLAY_WIDTH // 2, DISPLAY_HEIGHT // 2 - 35, size=18, color=COL_RED, center=True)
-        draw_text(self.display, "Kamu dikalahkan musuh!", DISPLAY_WIDTH // 2, DISPLAY_HEIGHT // 2 - 5, size=11, color=COL_WHITE, center=True)
-        
-        # Animasi Tekan Enter berkedip
-        if (pygame.time.get_ticks() // 500) % 2 == 0:
-            draw_text(self.display, "Tekan ENTER untuk Retry", DISPLAY_WIDTH // 2, DISPLAY_HEIGHT // 2 + 25, size=11, color=COL_ACCENT, center=True)
+        pygame.quit()

@@ -1,10 +1,12 @@
 import sys
 import os
 
-# Tambahkan direktori root project ke sys.path agar import 'src.xxx' berjalan lancar
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Tambahkan folder 'src/' dan root folder ke sys.path agar import lokal maupun paket berjalan lancar
+src_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, src_dir)
+sys.path.insert(1, os.path.dirname(src_dir))
 
-from src.game import Game
+from game import Game
 
 if __name__ == '__main__':
     game = Game()
