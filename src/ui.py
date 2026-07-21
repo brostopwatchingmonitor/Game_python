@@ -158,15 +158,8 @@ class UI:
         bx  = 40
         by  = settings.SCREEN_HEIGHT - 48
 
-        if "Crab" in boss.name:
-            label_col = (255, 120, 40)
-            prefix = "🦀 "
-        elif "Shark" in boss.name:
-            label_col = (80, 150, 240)
-            prefix = "🦈 "
-        else:
-            label_col = (200, 0, 255)
-            prefix = "☠ "
+        label_col = (200, 0, 255)
+        prefix = "☠ "
 
         panel = pygame.Surface((bw + 20, 38), pygame.SRCALPHA)
         panel.fill((20, 0, 40, 200) if "Warden" in boss.name else (10, 15, 30, 200))

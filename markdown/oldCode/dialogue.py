@@ -64,11 +64,15 @@ DIALOGUE_SCRIPTS = {
     ]
 }
 
+
 def _load_font(size, bold=False):
     try:    return pygame.font.SysFont("Segoe UI", size, bold=bold)
     except: return pygame.font.SysFont("Arial",    size, bold=bold)
 
+
+# ── Memuat sequence sprite dari folder ─────────────────────────
 def _load_sequence(folder, filenames, target_h):
+    """Muat daftar berkas gambar dari folder dan scale sesuai target_h."""
     frames = []
     for fname in filenames:
         path = os.path.join(folder, fname)
@@ -84,8 +88,11 @@ def _load_sequence(folder, filenames, target_h):
                 print(f"[dialogue] Error loading {path}: {e}")
     return frames
 
+
 class DialogueManager:
     """Mengatur alur dialog VN, potret karakter sprite, dan visual textbox neon."""
+
+    # Tinggi portrait karakter di layar dialog (dalam piksel)
     PORTRAIT_H = 420
 
     def __init__(self):
@@ -103,23 +110,27 @@ class DialogueManager:
         # Animasi portrait
         self._anim_tick  = 0
         self._anim_frame = 0
+
+        # Cache potret geometris (fallback)
         self._portrait_cache = {}
 
+        # Muat sprite portrait dari aset
         self._hasumi_idle    = []
         self._saki_idle      = []
         self._load_portrait_sprites()
 
     def _load_portrait_sprites(self):
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        # Mengambil dari Project Base_OLD sesuai permintaan
-        aset_dir = os.path.join(base_dir, "..", "Project Base_OLD", "aset karakter_Hasumi")
+        aset_dir = os.path.join(base_dir, "..", "data", "assets_p1", "aset_karakter_Hasumi")
         h = self.PORTRAIT_H
 
+        # Hasumi: front_idle sequence
         self._hasumi_idle = _load_sequence(
             aset_dir,
             [f"front_idle_{i}.png" for i in range(4)],
             h
         )
+        # Fallback: idle_right
         if not self._hasumi_idle:
             self._hasumi_idle = _load_sequence(
                 aset_dir,
@@ -127,7 +138,8 @@ class DialogueManager:
                 h
             )
 
-        saki_new_dir = os.path.join(base_dir, "..", "Project Base_OLD", "Asset_Saki")
+        # Saki: Muat dari Asset_Saki jika ada, jika tidak, fallback ke aset Hasumi
+        saki_new_dir = os.path.join(base_dir, "..", "data", "assets_p1", "Asset_Saki")
         saki_new_file = "—Pngtree—game character anime comic girl_3932788.png"
         saki_new_path = os.path.join(saki_new_dir, saki_new_file)
 
@@ -143,16 +155,18 @@ class DialogueManager:
                 new_w = int(orig_w * scale)
                 scaled_base = pygame.transform.scale(cropped, (new_w, h))
 
+                # Buat 4 frame animasi pernapasan (idle breathing)
                 self._saki_idle = [
-                    scaled_base,
-                    pygame.transform.scale(scaled_base, (int(new_w * 0.99), int(h * 1.01))),
-                    pygame.transform.scale(scaled_base, (int(new_w * 0.985), int(h * 1.015))),
-                    pygame.transform.scale(scaled_base, (int(new_w * 0.99), int(h * 1.01)))
+                    scaled_base,  # Frame 0: normal
+                    pygame.transform.scale(scaled_base, (int(new_w * 0.99), int(h * 1.01))), # Frame 1: breathing
+                    pygame.transform.scale(scaled_base, (int(new_w * 0.985), int(h * 1.015))), # Frame 2: peak inhale
+                    pygame.transform.scale(scaled_base, (int(new_w * 0.99), int(h * 1.01)))  # Frame 3: exhale
                 ]
                 print("[dialogue] Successfully loaded Saki's new premium design from Asset_Saki!")
             except Exception as e:
                 print(f"[dialogue] Error loading premium Saki asset: {e}")
 
+        # Fallback jika gagal atau tidak ditemukan
         if not self._saki_idle:
             self._saki_idle = _load_sequence(
                 aset_dir,
@@ -160,6 +174,7 @@ class DialogueManager:
                 h
             )
 
+    # ── Lifecycle ─────────────────────────────────────────────
     def start_cutscene(self, script_key, on_complete_callback=None):
         if script_key in DIALOGUE_SCRIPTS:
             self.current_script = DIALOGUE_SCRIPTS[script_key]
@@ -202,11 +217,13 @@ class DialogueManager:
             if self.char_idx < len(current_line["text"]):
                 self.char_idx += 1
 
+        # Animasi portrait idle (ganti frame tiap 18 frame)
         self._anim_tick += 1
         if self._anim_tick >= 18:
             self._anim_tick = 0
             self._anim_frame += 1
 
+    # ── Draw ──────────────────────────────────────────────────
     def draw(self, screen):
         if not self.active:
             return
@@ -217,35 +234,44 @@ class DialogueManager:
 
         W, H = settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT
 
+        # ── 1. Render Portrait Karakter ──
         self._draw_portraits(screen, speaker, emotion)
 
+        # ── 2. Semi-transparan gradient bawah ──
         gradient = pygame.Surface((W, 200), pygame.SRCALPHA)
         for i in range(200):
             alpha = int(180 * (i / 200))
             pygame.draw.line(gradient, (0, 5, 15, alpha), (0, i), (W, i))
         screen.blit(gradient, (0, H - 200))
 
+        # ── 3. Text Box Utama ──
         bx, by = 30, H - 175
         bw, bh = W - 60, 145
 
         box_surf = pygame.Surface((bw, bh), pygame.SRCALPHA)
+        # Latar belakang box gradient
         for i in range(bh):
             alpha = int(200 + 40 * (i / bh))
             pygame.draw.line(box_surf, (0, 8, 22, min(alpha, 235)), (0, i), (bw, i))
+        # Border neon lapis ganda
         pygame.draw.rect(box_surf, (0, 190, 255, 200), box_surf.get_rect(), 2)
-        pygame.draw.rect(box_surf, (0, 255, 230, 60), pygame.Rect(3, 3, bw - 6, bh - 6), 1)
+        pygame.draw.rect(box_surf, (0, 255, 230, 60),
+                         pygame.Rect(3, 3, bw - 6, bh - 6), 1)
         screen.blit(box_surf, (bx, by))
 
+        # ── 4. Name Plate ──
         nx, ny = bx + 16, by - 30
         nw, nh = max(180, self._font_name.size(speaker)[0] + 32), 34
 
         name_surf = pygame.Surface((nw, nh), pygame.SRCALPHA)
+        # Gradient diagonal nama
         for i in range(nh):
             alpha = int(230 - 30 * (i / nh))
             pygame.draw.line(name_surf, (0, 12, 30, alpha), (0, i), (nw, i))
         pygame.draw.rect(name_surf, (0, 200, 200, 200), name_surf.get_rect(), 2)
         screen.blit(name_surf, (nx, ny))
 
+        # Warna nama berdasarkan karakter
         if speaker == "Hasumi":
             name_col = (255, 230, 100)
         elif speaker == "Saki":
@@ -258,8 +284,11 @@ class DialogueManager:
         ns = self._font_name.render(speaker, True, name_col)
         screen.blit(ns, (nx + 12, ny + 5))
 
-        pygame.draw.line(screen, (0, 180, 200, 160), (nx, ny + nh), (nx + nw, ny + nh), 1)
+        # Garis dekoratif di bawah nameplate
+        pygame.draw.line(screen, (0, 180, 200, 160),
+                         (nx, ny + nh), (nx + nw, ny + nh), 1)
 
+        # ── 5. Isi Teks (Typewriter Effect + Word Wrap) ──
         full_text    = current_line["text"]
         visible_text = full_text[:self.char_idx]
         lines = self._wrap_text(visible_text, self._font_text, bw - 50)
@@ -269,23 +298,28 @@ class DialogueManager:
             ts = self._font_text.render(line, True, col)
             screen.blit(ts, (bx + 26, by + 22 + i * 28))
 
+        # ── 6. Indikator Lanjut (▼ blink) ──
         if self.char_idx >= len(full_text):
             if (pygame.time.get_ticks() // 400) % 2 == 0:
                 tri_x = bx + bw - 30
                 tri_y = by + bh - 18
-                pygame.draw.polygon(screen, (0, 220, 255), [(tri_x, tri_y), (tri_x + 10, tri_y), (tri_x + 5, tri_y + 8)])
+                pygame.draw.polygon(screen, (0, 220, 255),
+                                    [(tri_x, tri_y), (tri_x + 10, tri_y), (tri_x + 5, tri_y + 8)])
 
-        hint = self._font_hint.render("[ ENTER / Z ] Lanjut    [ ESC ] Lewati", True, (60, 100, 130))
+        hint = self._font_hint.render("[ ENTER / Z ] Lanjut    [ ESC ] Lewati",
+                                       True, (60, 100, 130))
         screen.blit(hint, (W - hint.get_width() - 50, by + bh - 20))
 
+    # ── Render Portrait Sprite
     def _draw_portraits(self, screen, active_speaker, emotion):
         W, H = settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT
         ph    = self.PORTRAIT_H
 
+        # main char gwe selalu di kiri
         hasumi_active = (active_speaker == "Hasumi")
         right_active  = not hasumi_active
 
-        # Hasumi (Kiri)
+        # ── Potret Hasumi (Kiri) ──
         if self._hasumi_idle:
             frame_idx  = self._anim_frame % len(self._hasumi_idle)
             frame      = self._hasumi_idle[frame_idx]
@@ -294,29 +328,35 @@ class DialogueManager:
             dest_y     = H - ph - 10
 
             if hasumi_active:
+                # Karakter aktif: efek bobbing halus + glowing
                 bob = int(math.sin(pygame.time.get_ticks() * 0.003) * 4)
+                rendered = frame
                 glow_surf = pygame.Surface((pw + 20, 20), pygame.SRCALPHA)
                 pygame.draw.ellipse(glow_surf, (0, 210, 255, 60), glow_surf.get_rect())
                 screen.blit(glow_surf, (dest_x - 10, dest_y + ph - 10))
-                screen.blit(frame, (dest_x, dest_y + bob))
+                screen.blit(rendered, (dest_x, dest_y + bob))
             else:
+                # Karakter yg gak ngomong gelapin
                 dark = frame.copy()
                 dark.fill((0, 0, 0, 110), special_flags=pygame.BLEND_RGBA_MULT)
                 screen.blit(dark, (dest_x, dest_y))
         else:
+            # Fallback buat render
             hasumi_x = 80
             hasumi_y = H - 430
-            self._render_hasumi_geo(screen, hasumi_x, hasumi_y, active=hasumi_active, emotion=emotion)
+            self._render_hasumi_geo(screen, hasumi_x, hasumi_y,
+                                    active=hasumi_active, emotion=emotion)
 
+        #
         if "Lord" in active_speaker or (not hasumi_active and active_speaker == "Lord HyperEnd"):
             right_key = "lord"
         else:
             right_key = "saki"
 
-        # Saki (Kanan)
         if right_key == "saki" and self._saki_idle:
             frame_idx = self._anim_frame % len(self._saki_idle)
             frame     = self._saki_idle[frame_idx]
+            # Balik horizontal WOI
             frame     = pygame.transform.flip(frame, True, False)
             pw        = frame.get_width()
             ph_frame  = frame.get_height()
@@ -334,13 +374,16 @@ class DialogueManager:
                 dark.fill((0, 0, 0, 110), special_flags=pygame.BLEND_RGBA_MULT)
                 screen.blit(dark, (dest_x, dest_y))
         else:
+           
             right_x = W - 320
             right_y = H - 430
             if right_key == "lord":
                 self._render_lord_hyperend_geo(screen, right_x, right_y, active=right_active)
             else:
-                self._render_saki_geo(screen, right_x, right_y, active=right_active, emotion=emotion)
+                self._render_saki_geo(screen, right_x, right_y,
+                                      active=right_active, emotion=emotion)
 
+    # ── Word Wrap Helper
     def _wrap_text(self, text, font, max_width):
         words = text.split(" ")
         lines = []
@@ -357,54 +400,121 @@ class DialogueManager:
             lines.append(current)
         return lines
 
-    def _render_hasumi_geo(self, screen, x, y, active=True, emotion="idle"):
-        # Gambar geometris vector Hasumi
-        col = (255, 200, 120) if active else (100, 80, 50)
-        hair_col = (230, 80, 120) if active else (100, 40, 50)
-        
-        # Hair back
-        pygame.draw.ellipse(screen, hair_col, (x - 10, y + 20, 120, 220))
-        # Head
-        pygame.draw.ellipse(screen, col, (x, y + 40, 100, 110))
-        # Eyes
-        eye_col = (80, 200, 255) if active else (40, 100, 120)
-        pygame.draw.circle(screen, eye_col, (x + 35, y + 85), 7)
-        pygame.draw.circle(screen, eye_col, (x + 65, y + 85), 7)
-        pygame.draw.circle(screen, (0, 0, 0), (x + 35, y + 85), 3)
-        pygame.draw.circle(screen, (0, 0, 0), (x + 65, y + 85), 3)
-        
-        # Mouth
+    def _render_hasumi_geo(self, screen, x, y, active, emotion):
+        key = f"hasumi_geo_{emotion}_{active}"
+        if key in self._portrait_cache:
+            screen.blit(self._portrait_cache[key], (x, y))
+            return
+        surf = pygame.Surface((240, 320), pygame.SRCALPHA)
+        pygame.draw.ellipse(surf, (255, 210, 180), (70, 60, 100, 110))
+        pygame.draw.ellipse(surf, (100, 30, 120), (55, 50, 130, 140))
+        pygame.draw.polygon(surf, (120, 35, 140), [(55, 120), (70, 240), (85, 120)])
+        pygame.draw.polygon(surf, (120, 35, 140), [(155, 120), (170, 240), (185, 120)])
+        pygame.draw.polygon(surf, (130, 45, 150), [(70, 70), (95, 110), (110, 70)])
+        pygame.draw.polygon(surf, (130, 45, 150), [(110, 70), (125, 110), (145, 70)])
+        pygame.draw.circle(surf, (0, 220, 200), (70, 65), 10)
+        pygame.draw.circle(surf, (0, 220, 200), (170, 65), 10)
+        eye_y = 105
+        pygame.draw.ellipse(surf, (20, 80, 220), (85, eye_y, 16, 22))
+        pygame.draw.ellipse(surf, (255, 255, 255), (89, eye_y + 3, 6, 8))
+        pygame.draw.ellipse(surf, (20, 80, 220), (135, eye_y, 16, 22))
+        pygame.draw.ellipse(surf, (255, 255, 255), (139, eye_y + 3, 6, 8))
         if emotion == "smile":
-            pygame.draw.arc(screen, (200, 50, 50), (x + 40, y + 105, 20, 15), math.pi, 0, 2)
+            pygame.draw.arc(surf, (150, 40, 60), (110, 125, 20, 15), math.pi, 2*math.pi, 3)
+        elif emotion == "worried":
+            pygame.draw.line(surf, (150, 40, 60), (112, 135), (128, 132), 3)
+            pygame.draw.line(surf, (60, 20, 80), (82, 92), (98, 98), 2)
+            pygame.draw.line(surf, (60, 20, 80), (138, 98), (154, 92), 2)
         else:
-            pygame.draw.line(screen, (100, 30, 30), (x + 42, y + 112), (x + 58, y + 112), 2)
+            pygame.draw.line(surf, (150, 40, 60), (112, 132), (128, 132), 2)
+            pygame.draw.line(surf, (60, 20, 80), (82, 95), (98, 95), 2)
+            pygame.draw.line(surf, (60, 20, 80), (138, 95), (154, 95), 2)
+        pygame.draw.ellipse(surf, (255, 150, 150, 80), (80, 120, 20, 10))
+        pygame.draw.ellipse(surf, (255, 150, 150, 80), (140, 120, 20, 10))
+        pygame.draw.polygon(surf, (255, 210, 180), [(105, 160), (120, 185), (135, 160)])
+        pygame.draw.ellipse(surf, (0, 30, 80), (60, 180, 120, 140))
+        pygame.draw.line(surf, (0, 220, 200), (90, 180), (90, 320), 4)
+        pygame.draw.line(surf, (0, 220, 200), (150, 180), (150, 320), 4)
+        final_surf = pygame.Surface((240, 320), pygame.SRCALPHA)
+        final_surf.blit(surf, (0, 0))
+        if not active:
+            overlay = pygame.Surface((240, 320), pygame.SRCALPHA)
+            overlay.fill((20, 30, 50, 120))
+            final_surf.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
+        self._portrait_cache[key] = final_surf
+        screen.blit(final_surf, (x, y))
 
-    def _render_saki_geo(self, screen, x, y, active=True, emotion="idle"):
-        col = (245, 210, 160) if active else (95, 80, 65)
-        hair_col = (0, 200, 230) if active else (0, 90, 105)
-        
-        # God-ray hair
-        pygame.draw.ellipse(screen, hair_col, (x - 20, y + 10, 140, 240))
-        # Head
-        pygame.draw.ellipse(screen, col, (x, y + 40, 100, 110))
-        # Tech eyes
-        eye_col = (0, 255, 200) if active else (0, 100, 80)
-        pygame.draw.rect(screen, eye_col, (x + 25, y + 80, 16, 8))
-        pygame.draw.rect(screen, eye_col, (x + 59, y + 80, 16, 8))
-        
+    def _render_saki_geo(self, screen, x, y, active, emotion):
+        key = f"saki_geo_{emotion}_{active}"
+        if key in self._portrait_cache:
+            screen.blit(self._portrait_cache[key], (x, y))
+            return
+        surf = pygame.Surface((240, 320), pygame.SRCALPHA)
+        pygame.draw.polygon(surf, (255, 50, 120, 200), [(50, 120), (10, 80), (20, 140), (50, 160)])
+        pygame.draw.polygon(surf, (255, 120, 0, 180), [(50, 100), (0, 40), (10, 90)])
+        pygame.draw.polygon(surf, (255, 50, 120, 200), [(190, 120), (230, 80), (220, 140), (190, 160)])
+        pygame.draw.polygon(surf, (255, 120, 0, 180), [(190, 100), (240, 40), (230, 90)])
+        pygame.draw.ellipse(surf, (255, 215, 185), (70, 60, 100, 110))
+        pygame.draw.ellipse(surf, (50, 10, 70), (55, 50, 130, 130))
+        pygame.draw.ellipse(surf, (65, 12, 85), (35, 90, 45, 200))
+        pygame.draw.ellipse(surf, (65, 12, 85), (160, 90, 45, 200))
+        pygame.draw.polygon(surf, (80, 20, 100), [(70, 70), (95, 105), (110, 70)])
+        pygame.draw.polygon(surf, (80, 20, 100), [(110, 70), (125, 105), (145, 70)])
+        pygame.draw.circle(surf, (255, 100, 0), (62, 75), 8)
+        pygame.draw.circle(surf, (255, 100, 0), (178, 75), 8)
+        eye_y = 105
+        pygame.draw.ellipse(surf, (255, 50, 50), (85, eye_y, 16, 22))
+        pygame.draw.circle(surf, (255, 210, 0), (93, eye_y + 11), 3)
+        pygame.draw.ellipse(surf, (255, 50, 50), (135, eye_y, 16, 22))
+        pygame.draw.circle(surf, (255, 210, 0), (143, eye_y + 11), 3)
         if emotion == "smile":
-            pygame.draw.arc(screen, (200, 50, 50), (x + 40, y + 105, 20, 15), math.pi, 0, 2)
+            pygame.draw.arc(surf, (160, 30, 80), (110, 125, 20, 15), math.pi, 2*math.pi, 3)
+        elif emotion == "worried":
+            pygame.draw.line(surf, (160, 30, 80), (112, 135), (128, 133), 3)
+            pygame.draw.line(surf, (80, 20, 110), (82, 92), (98, 98), 2)
+            pygame.draw.line(surf, (80, 20, 110), (138, 98), (154, 92), 2)
         else:
-            pygame.draw.line(screen, (100, 30, 30), (x + 42, y + 112), (x + 58, y + 112), 2)
+            pygame.draw.line(surf, (160, 30, 80), (112, 132), (128, 132), 2)
+            pygame.draw.line(surf, (80, 20, 110), (82, 95), (98, 95), 2)
+            pygame.draw.line(surf, (80, 20, 110), (138, 95), (154, 95), 2)
+        pygame.draw.polygon(surf, (255, 215, 185), [(105, 160), (120, 182), (135, 160)])
+        pygame.draw.ellipse(surf, (30, 30, 45), (60, 180, 120, 150))
+        pygame.draw.ellipse(surf, (220, 30, 120), (75, 195, 90, 130))
+        final_surf = pygame.Surface((240, 320), pygame.SRCALPHA)
+        final_surf.blit(surf, (0, 0))
+        if not active:
+            overlay = pygame.Surface((240, 320), pygame.SRCALPHA)
+            overlay.fill((20, 30, 50, 120))
+            final_surf.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
+        self._portrait_cache[key] = final_surf
+        screen.blit(final_surf, (x, y))
 
-    def _render_lord_hyperend_geo(self, screen, x, y, active=True):
-        col = (100, 0, 120) if active else (40, 0, 50)
-        glow = (255, 0, 120) if active else (100, 0, 50)
-        
-        # Void shroud
-        pygame.draw.polygon(screen, col, [
-            (x - 20, y + 250), (x + 50, y), (x + 120, y + 250)
-        ])
-        # Eye core
-        pygame.draw.circle(screen, glow, (x + 50, y + 100), 20)
-        pygame.draw.circle(screen, (0, 0, 0), (x + 50, y + 100), 8)
+    def _render_lord_hyperend_geo(self, screen, x, y, active):
+        key = f"lord_geo_{active}"
+        if key in self._portrait_cache:
+            screen.blit(self._portrait_cache[key], (x, y))
+            return
+        surf = pygame.Surface((260, 340), pygame.SRCALPHA)
+        for r in range(5, 50, 10):
+            pygame.draw.ellipse(surf, (100, 0, 160, 35 - r//2), (20-r, 30-r, 220+r*2, 260+r*2))
+        pygame.draw.ellipse(surf, (15, 5, 30), (40, 40, 180, 250))
+        pygame.draw.polygon(surf, (40, 0, 70), [(80, 50), (40, 0), (105, 45)])
+        pygame.draw.polygon(surf, (40, 0, 70), [(180, 50), (220, 0), (155, 45)])
+        pygame.draw.circle(surf, (255, 0, 80), (100, 120), 8)
+        pygame.draw.circle(surf, (255, 255, 255), (100, 120), 3)
+        pygame.draw.circle(surf, (255, 0, 80), (160, 120), 8)
+        pygame.draw.circle(surf, (255, 255, 255), (160, 120), 3)
+        pygame.draw.circle(surf, (255, 0, 80), (130, 95), 10)
+        pygame.draw.circle(surf, (255, 255, 100), (130, 95), 4)
+        pygame.draw.line(surf, (180, 0, 255), (100, 160), (130, 220), 4)
+        pygame.draw.line(surf, (180, 0, 255), (160, 160), (130, 220), 4)
+        pygame.draw.line(surf, (180, 0, 255), (130, 220), (130, 300), 5)
+        final_surf = pygame.Surface((260, 340), pygame.SRCALPHA)
+        final_surf.blit(surf, (0, 0))
+        if not active:
+            overlay = pygame.Surface((260, 340), pygame.SRCALPHA)
+            overlay.fill((30, 10, 40, 140))
+            final_surf.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
+        self._portrait_cache[key] = final_surf
+        screen.blit(final_surf, (x, y - 20))
+

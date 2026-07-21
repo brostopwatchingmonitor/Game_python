@@ -1,0 +1,64 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+src/__pycache__/
+**/__pycache__/
+
+# C-extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Pygame & OS temporary files
+.pytest_cache/
+.DS_Store
+Thumbs.db
+*.log
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs and editors configurations
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.swp
+
+# Tool & Analysis outputs
+graphify-out/
+.gemini/
+
+# Unused / Old Projects & Large Redundant Assets
+Project_Base_OLD/
+Project Base_OLD/
+
+# Game save data (Local gameplay progress)
+save_data.json
+src/save_data.json
+*.json.bak

@@ -6,6 +6,7 @@ class DefaultCamera:
         self.offset = pygame.Vector2()
 
     def update(self, target_pos, map_width, map_height):
+        # Platformer camera: center target, clamp within map
         self.offset.x = -(target_pos[0] - WINDOW_WIDTH / 2)
         self.offset.y = -(target_pos[1] - WINDOW_HEIGHT / 2)
 
@@ -20,11 +21,13 @@ class DefaultCamera:
             self.offset.y = (WINDOW_HEIGHT - map_height) / 2
         return self.offset
 
+
 class BossCamera:
     def __init__(self):
         self.offset = pygame.Vector2()
 
     def update(self, target_pos, map_width, map_height):
+        # Smooth follow / Lerp follow for Top-down/Third-person Boss camera
         target_x = -(target_pos[0] - WINDOW_WIDTH / 2)
         target_y = -(target_pos[1] - WINDOW_HEIGHT / 2)
         
@@ -42,6 +45,7 @@ class BossCamera:
             self.offset.y = (WINDOW_HEIGHT - map_height) / 2
         return self.offset
 
+
 class CameraManager:
     def __init__(self):
         self.modes = {
@@ -57,31 +61,26 @@ class CameraManager:
     def update(self, target_pos, map_width, map_height):
         return self.modes[self.current_mode].update(target_pos, map_width, map_height)
 
+
 class AllSprites(pygame.sprite.Group):
     def __init__(self):
         super().__init__()
-        self.display_surface = None
+        self.display_surface = pygame.display.get_surface()
         self.camera_manager = CameraManager()
         self.offset = pygame.Vector2()
 
     def set_camera_mode(self, mode):
         self.camera_manager.set_mode(mode)
 
-    def draw(self, target_pos, surface=None):
-        if surface is not None:
-            self.display_surface = surface
-        elif self.display_surface is None:
-            self.display_surface = pygame.display.get_surface()
-            
+    def draw(self, target_pos):
+        # Clamp camera offset within map boundaries
         map_w = getattr(self, 'map_width', WINDOW_WIDTH)
         map_h = getattr(self, 'map_height', WINDOW_HEIGHT)
         
         self.offset = self.camera_manager.update(target_pos, map_w, map_h)
 
         for sprite in self:
-            draw_offset = getattr(sprite, 'image_offset', pygame.Vector2())
-            image_rect = sprite.image.get_rect(midbottom=sprite.rect.midbottom)
-            self.display_surface.blit(sprite.image, image_rect.topleft + self.offset + draw_offset)
+            self.display_surface.blit(sprite.image, sprite.rect.topleft + self.offset)
             
             # Draw Enemy/Boss HP Bar
             if sprite.__class__.__name__ in ('BaseEnemy', 'BossEnemy'):
@@ -92,8 +91,10 @@ class AllSprites(pygame.sprite.Group):
                 screen_x = sprite.rect.left + self.offset.x
                 screen_y = sprite.rect.top + self.offset.y - 12
                 
+                # Background merah gelap
                 pygame.draw.rect(self.display_surface, (100, 20, 20), (screen_x, screen_y, bar_w, bar_h))
                 
+                # Fill HP
                 if ratio > 0.5:
                     hp_color = (0, 255, 100)
                 elif ratio > 0.2:
@@ -104,4 +105,5 @@ class AllSprites(pygame.sprite.Group):
                 if ratio > 0:
                     pygame.draw.rect(self.display_surface, hp_color, (screen_x, screen_y, int(bar_w * ratio), bar_h))
                     
+                # Border putih/abu-abu terang
                 pygame.draw.rect(self.display_surface, (220, 220, 220), (screen_x, screen_y, bar_w, bar_h), 1)

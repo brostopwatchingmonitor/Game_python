@@ -3,26 +3,13 @@ from sprites import AnimatedSprites
 from timer import Timer
 from stage import *
 
+
 class Player(AnimatedSprites):
     def __init__(self, pos, groups, collision_sprites, frames, create_bullet):
-        # Inisialisasi frame & animasi (list atau dict)
-        self.animations = None
-        if isinstance(frames, dict):
-            self.animations = frames
-            self.frames = self.animations.get('idle', [])
-        else:
-            self.frames = frames
-
-        super().__init__(pos, self.frames, groups)
+        super().__init__(pos, frames, groups)
         self.flip = False
         self.create_bullet = create_bullet
-        # Jika frame kosong, tentukan rect fallback. Jika berisi, set rect 40x80 dengan image_offset alignment
-        if not self.frames:
-            self.rect = pygame.Rect(pos[0], pos[1], 32, 48)
-            self.image_offset = pygame.Vector2(0, 0)
-        else:
-            self.rect = pygame.Rect(pos[0], pos[1], 40, 80)
-            self.image_offset = pygame.Vector2(0, 0)
+
         # movement & collision
         self.direction = pygame.Vector2()
         self.collision_sprites = collision_sprites
@@ -56,13 +43,6 @@ class Player(AnimatedSprites):
 
         # timer
         self.shoot_timer = Timer(500)
-        self.hurt_timer = Timer(300)
-
-    def take_damage(self, amount):
-        if self.invincible or self.hp <= 0:
-            return
-        self.hp = max(0, self.hp - amount)
-        self.hurt_timer.activate()
 
     def gain_xp(self, amount, stage_idx=0):
         self.xp += amount
@@ -193,97 +173,6 @@ class Player(AnimatedSprites):
         self.on_floor = bottom_rect.collidelist(level_rects) >= 0
     
     def animate(self, dt): 
-        if not self.frames:
-            # Fallback jika aset gambar tidak ada (gambar geometris dinamis)
-            self.image = pygame.Surface((32, 48), pygame.SRCALPHA)
-            color = (230, 80, 120) if not self.invincible or (pygame.time.get_ticks() // 100) % 2 == 0 else (230, 80, 120, 100)
-            pygame.draw.rect(self.image, color, (0, 0, 32, 48), border_radius=4)
-            # Eyes
-            eye_x = 22 if not self.flip else 6
-            pygame.draw.circle(self.image, (255, 255, 255), (eye_x, 15), 4)
-            pygame.draw.circle(self.image, (0, 0, 0), (eye_x + (1 if not self.flip else -1), 15), 2)
-            return
-
-        if self.animations and isinstance(self.animations, dict):
-            # Tentukan state aktif
-            if self.hp <= 0:
-                state = 'dead'
-            elif self.hurt_timer:
-                state = 'hurt'
-            elif self.shoot_timer:
-                state = 'attack_1'
-            elif not self.on_floor:
-                state = 'jump'
-            elif self.dashing:
-                state = 'run'
-            elif self.direction.x != 0 or (self.movement_mode == "boss" and self.direction.length() > 0):
-                state = 'walk' if self.animations.get('walk') else 'run'
-            else:
-                state = 'idle'
-                
-            active_frames = self.animations.get(state, [])
-            if not active_frames:
-                active_frames = self.animations.get('idle', [])
-                
-            if active_frames:
-                # Kecepatan animasi disesuaikan dengan state
-                if state == 'dead':
-                    anim_speed = 6
-                elif state == 'hurt':
-                    anim_speed = 6
-                elif state == 'attack_1':
-                    anim_speed = 12
-                elif state in ('run', 'walk'):
-                    anim_speed = 12
-                elif state == 'idle':
-                    anim_speed = 8
-                else:
-                    anim_speed = 10
-                
-                # Reset frame index if state changed to avoid index out of bounds or animation glitch
-                if not hasattr(self, '_last_state') or self._last_state != state:
-                    self.frame_index = 0
-                    self._last_state = state
-
-                if state == 'idle' or self.direction.x != 0 or not self.on_floor or self.dashing or (self.movement_mode == "boss" and self.direction.length() > 0) or state in ('attack_1', 'hurt', 'dead'):
-                    self.frame_index += anim_speed * dt
-                else:
-                    self.frame_index = 0
-                    
-                # Dapatkan indeks frame aktif
-                if state == 'jump':
-                    # Menahan frame di udara pada akhir animasi lompat
-                    idx = min(int(self.frame_index), len(active_frames) - 1)
-                elif state == 'dead':
-                    idx = min(int(self.frame_index), len(active_frames) - 1)
-                elif state == 'hurt':
-                    idx = min(int(self.frame_index), len(active_frames) - 1)
-                elif state == 'attack_1':
-                    idx = min(int(self.frame_index), len(active_frames) - 1)
-                else:
-                    idx = int(self.frame_index) % len(active_frames)
-                    
-                self.image = active_frames[idx]
-                
-                # Mengatur hadap (flip)
-                if self.movement_mode == "boss":
-                    mouse_pos = pygame.mouse.get_pos()
-                    player_screen_center = pygame.Vector2(self.rect.center) + self.camera_offset
-                    self.flip = mouse_pos[0] < player_screen_center.x
-                else:
-                    if self.dashing:
-                        self.flip = self.dash_direction < 0
-                    elif self.direction.x != 0:
-                        self.flip = self.direction.x < 0
-                        
-                self.image = pygame.transform.flip(self.image, self.flip, False)
-                self.image_offset = pygame.Vector2(
-                    (self.rect.width - self.image.get_width()) / 2,
-                    self.rect.height - self.image.get_height()
-                )
-                return
-
-        # Fallback jika frames berupa list satu dimensi biasa (compat lama)
         if self.movement_mode == "boss":
             # Face the mouse position
             mouse_pos = pygame.mouse.get_pos()
@@ -314,7 +203,6 @@ class Player(AnimatedSprites):
         self.shoot_timer.update()
         self.dash_timer.update()
         self.dash_cooldown.update()
-        self.hurt_timer.update()
 
         # Matikan status dash & kekebalan jika timer dash habis
         if self.dashing and not self.dash_timer:
@@ -346,9 +234,3 @@ class Player(AnimatedSprites):
         # Regenerasi Stamina (WP) otomatis jika di bawah max_wp
         if self.wp < self.max_wp:
             self.wp = min(self.max_wp, self.wp + 8 * dt)
-            
-        # Atur status kelelahan stamina
-        if self.wp <= 0:
-            self._wp_exhausted = True
-        elif self.wp >= 15:
-            self._wp_exhausted = False

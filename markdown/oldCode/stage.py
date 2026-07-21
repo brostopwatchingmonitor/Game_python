@@ -4,16 +4,16 @@
 
 import settings
 
-# ── Konfigurasi tiap stage (disesuaikan dengan folder assets/) ───────────────────
+# ── Konfigurasi tiap stage ───────────────────────────────────
 STAGES = {
     1: {
-        "map"         : "assets/image/maps/forest.tmx",
+        "map"         : "data/maps/forest.tmx",
         "camera"      : "default",
         "tile_scale"  : 3.0,
         "name"        : "Pantai Reruntuhan",
         "subtitle"    : "Di sinilah segalanya berakhir...",
-        "kill_target" : 10,
-        "enemy_pool"  : ["Enemy1"],
+        "kill_target" : 15,
+        "enemy_pool"  : ["Crab", "Jellyfish"],
         "spawn_rate"  : 100,
         "enemy_scale" : 1.0,
         "has_boss"    : False,
@@ -27,15 +27,15 @@ STAGES = {
         ),
     },
     2: {
-        "map"         : "assets/image/maps/prepare.tmx",
+        "map"         : "data/maps/prepare.tmx",
         "camera"      : "default",
         "tile_scale"  : 3.0,
         "name"        : "Jurang Tengah Laut",
         "subtitle"    : "Semakin dalam, semakin terang.",
-        "kill_target" : 15,
-        "enemy_pool"  : ["Enemy1"],
+        "kill_target" : 20,
+        "enemy_pool"  : ["Shark", "Jellyfish"],
         "spawn_rate"  : 85,
-        "enemy_scale" : 1.2,
+        "enemy_scale" : 1.4,
         "has_boss"    : False,
         "bg_top"      : (4,  15,  50),
         "bg_bot"      : (2,   8,  25),
@@ -47,13 +47,13 @@ STAGES = {
         ),
     },
     3: {
-        "map"         : "assets/image/maps/bossfight.tmx",
-        "camera"      : "default",
+        "map"         : "data/maps/bossfight.tmx",
+        "camera"      : "boss",
         "tile_scale"  : 3.0,
-        "name"        : "Sarang HyperEnd",
+        "name"         : "Sarang HyperEnd",
         "subtitle"     : "Ini adalah akhir — atau awal?",
         "kill_target"  : 1,
-        "enemy_pool"   : ["Enemy1"],
+        "enemy_pool"   : ["Shark"],
         "spawn_rate"   : 0,
         "enemy_scale"  : 1.9,
         "has_boss"     : True,
@@ -67,6 +67,7 @@ STAGES = {
         ),
     }
 }
+
 
 class Stage:
     """Merepresentasikan satu stage dengan konfigurasinya."""
@@ -132,6 +133,7 @@ class Stage:
         d["hp"]    = int(d["hp"]    * self.enemy_scale)
         d["damage"]= int(d["damage"]* self.enemy_scale)
         return d
+
 
 class StageManager:
     """Mengatur urutan stage dan transisi antar stage."""
