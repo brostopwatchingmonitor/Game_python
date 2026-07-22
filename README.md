@@ -12,6 +12,8 @@ Sebuah game platformer 2D aksi menggunakan bahasa pemrograman **Python** dan **P
 | **Melompat (Mendukung Double Jump)** | `Spasi` / `W` / `Panah Atas` |
 | **Tebasan Pedang (3-Hit Combo)** | `Klik Kiri Mouse` |
 | **Bertahan / Shield** | `Klik Kanan Mouse` (Tahan) |
+| **Membuka / Menutup Toko Senjata** | `B` (Saat Bermain) |
+| **Membeli Item di Toko** | `1`, `2`, atau `3` (Saat Toko Terbuka) |
 | **Keluar Game** | `ESC` |
 
 ---
