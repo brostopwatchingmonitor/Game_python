@@ -1,3 +1,4 @@
+# dialogue.py
 # ============================================================
 #  src/dialogue.py — Sistem Dialog Visual Novel & Potret Karakter
 # ============================================================
@@ -5,62 +6,63 @@
 import pygame
 import math
 import os
-import settings
+from settings import *
 
 # --- Data Naskah Dialog (Cutscenes) ---
 DIALOGUE_SCRIPTS = {
     # ── Stage 1: Sebelum Mulai ──
     "intro_stage_0": [
-        {"speaker": "Hasumi", "side": "left", "emotion": "worried", "text": "Di mana ini? Airnya terasa begitu dingin... dan langitnya tampak hancur."},
-        {"speaker": "Saki", "side": "right", "emotion": "idle", "text": "Identifikasi terdeteksi. Entitas non-terdistorsi. Siapa kamu?"},
-        {"speaker": "Hasumi", "side": "left", "emotion": "worried", "text": "Aku Hasumi. Aku terlempar dari duniaku saat badai merusak segalanya."},
-        {"speaker": "Saki", "side": "right", "emotion": "smile", "text": "Aku Saki, yah aku adalah salah satu pelindung di kawasan ini dari makhluk ataupun entitas abstrak dan berbahaya."},
-        {"speaker": "Saki", "side": "left", "emotion": "serious", "text": "Dan kamu apa yang bisa membuktikan bahwa kamu bukan ancaman? kamu benar benar terlihat tidak seperti gadis biasa"},
-        {"speaker": "Hasumi", "side": "left", "emotion": "worried", "text": "Aku... aku memang bukan gadis biasa tapi bukan berarti aku ancaman!"},
-        {"speaker": "Saki", "side": "right", "emotion": "idle", "text": "hmmmh... baiklah mari kita lihat apa kamu bukan ancaman dengan mengalahkan beberapa monster itu!"},
-        {"speaker": "Hasumi", "side": "left", "emotion": "worried", "text": "H-HAH?! Tapi-"},
-        {"speaker": "Saki", "side": "right", "emotion": "smile", "text": "selamat mencoba dan jangan terluka ya~"},
+        {"speaker": "Hasumi", "side": "left", "emotion": "worried", "text": "Ugh... my head... Where am I? This dense forest... the trees are withering, and the sky is fractured into pieces."},
+        {"speaker": "Hasumi", "side": "left", "emotion": "worried", "text": "My home... everything was consumed by that colossal shadow. Did I somehow cross the border into another nation?"},
+        {"speaker": "Saki", "side": "right", "emotion": "idle", "text": "Warning: Spatial anomaly detected in the Outskirts Forest. Scan complete... Non-distorted entity identified. State your identity."},
+        {"speaker": "Hasumi", "side": "left", "emotion": "worried", "text": "I-I am Hasumi. My world was just obliterated by the Lord of the End, and I was thrown here as it crumbled."},
+        {"speaker": "Saki", "side": "right", "emotion": "idle", "text": "I see. I am Saki, the designated guardian unit of this nation's border, tasked to protect it from the Void's corruption."},
+        {"speaker": "Saki", "side": "right", "emotion": "serious", "text": "However, the energy surge that brought you here has attracted his distorted pawns from the shadows. How can I be sure you are not one of them?"},
+        {"speaker": "Hasumi", "side": "left", "emotion": "angry", "text": "A pawn?! He destroyed my home! I'd rather fight to my last breath than let him ruin this nation too!"},
+        {"speaker": "Saki", "side": "right", "emotion": "smile", "text": "Interesting. Such a fierce resolve. Then prove your words, Hasumi. Survive their onslaught."},
+        {"speaker": "Hasumi", "side": "left", "emotion": "worried", "text": "W-Wait, right now?!"},
+        {"speaker": "Saki", "side": "right", "emotion": "smile", "text": "Combat system engaged. Good luck, and please try not to die~"},
     ],
     # ── Stage 1: Setelah Selesai ──
     "clear_stage_0": [
-        {"speaker": "Saki", "side": "right", "emotion": "smile", "text": "ohh... Boleh tahan, kamu punya potensi yang cukup bagus untuk seorang pendatang baru."},
-        {"speaker": "Hasumi", "side": "left", "emotion": "smile", "text": "Hah? Kamu Gila ya!"},
-        {"speaker": "Saki", "side": "right", "emotion": "idle", "text": "ssshhh... cukup sampai disini, kamu sudah menunjukan sedikit banyaknya kemampuanmu, baiklah kamu bisa ikut aku ke tempat selanjutnya."},
-        {"speaker": "Hasumi", "side": "left", "emotion": "worried", "text": "huft... ampun deh..."},
-        {"speaker": "Saki", "side": "right", "emotion": "smile", "text": "Sebelum lanjut, mampirlah ke Toko Laut Dalam. Aku bisa membantumu meningkatkan kekuatan!"}
+        {"speaker": "Saki", "side": "right", "emotion": "smile", "text": "Combat analysis complete. Survival capability: Above average. Not bad for a Deliverer-in-training."},
+        {"speaker": "Hasumi", "side": "left", "emotion": "angry", "text": "Are you crazy?! You almost got me killed!"},
+        {"speaker": "Saki", "side": "right", "emotion": "idle", "text": "Hush now... You've proven yourself. The entity that destroyed your world is known as 'Lord HyperEnd'."},
+        {"speaker": "Hasumi", "side": "left", "emotion": "worried", "text": "Lord HyperEnd... So that monstrosity is trying to consume this forest too?"},
+        {"speaker": "Saki", "side": "right", "emotion": "smile", "text": "Yes, and his forces are slowly corrupting our borders. Follow me, we must prepare. Drop by the Border Outpost to upgrade your gear!"}
     ],
     # ── Stage 2: Sebelum Mulai ──
     "intro_stage_1": [
-        {"speaker": "Hasumi", "side": "left", "emotion": "worried", "text": "Gelap sekali di bawah sini... Aku bahkan sulit melihat ujung siripku."},
-        {"speaker": "Saki", "side": "right", "emotion": "idle", "text": "Tekanan laut dalam terdeteksi. Hiu-hiu di area ini sangat agresif dan bisa menembak."},
-        {"speaker": "Hasumi", "side": "left", "emotion": "smile", "text": "Aku tidak akan menyerah. Aku merasakan energi hangat di dasar laut ini."},
-        {"speaker": "Saki", "side": "right", "emotion": "smile", "text": "Itu adalah inti kehidupan laut yang tersisa. Selamatkan mereka, Hasumi!"}
+        {"speaker": "Hasumi", "side": "left", "emotion": "worried", "text": "The deeper we go into the corrupted woods, the darker and more oppressive it gets. My light is fading."},
+        {"speaker": "Saki", "side": "right", "emotion": "serious", "text": "The miasma pressure here is extreme. The wild beasts in this zone have been entirely corrupted by Void energy."},
+        {"speaker": "Hasumi", "side": "left", "emotion": "smile", "text": "Even so... I can still feel a spark of life trying to survive within the dying roots."},
+        {"speaker": "Saki", "side": "right", "emotion": "smile", "text": "That's the remaining uncorrupted core of this forest. Protect it, Hasumi, and clear our path!"}
     ],
     # ── Stage 2: Setelah Selesai ──
     "clear_stage_1": [
-        {"speaker": "Hasumi", "side": "left", "emotion": "idle", "text": "Hampir saja... monster hiu tadi benar-benar merepotkan."},
-        {"speaker": "Saki", "side": "right", "emotion": "worried", "text": "Peringatan! Sinyal energi Lord HyperEnd meledak di kedalaman berikutnya."},
-        {"speaker": "Saki", "side": "right", "emotion": "idle", "text": "Tahap akhir ada di depan kita. Sarang HyperEnd. Bersiaplah dengan matang."}
+        {"speaker": "Hasumi", "side": "left", "emotion": "idle", "text": "Hah... Hah... Those corrupted beasts were relentless..."},
+        {"speaker": "Saki", "side": "right", "emotion": "worried", "text": "Critical Warning! Lord HyperEnd's energy signature is spiking drastically near the capital's ruins."},
+        {"speaker": "Saki", "side": "right", "emotion": "serious", "text": "We have reached the epicenter of the distortion. The Void Core's Throne. Brace yourself, Hasumi. This will be brutal."}
     ],
     # ── Stage 3: Sebelum Mulai ──
     "intro_stage_2": [
-        {"speaker": "Saki", "side": "right", "emotion": "worried", "text": "Hasumi, energi di sini sangat merusak. Willpower (WP) kamu akan lebih cepat terkuras jika terkena hit."},
-        {"speaker": "Hasumi", "side": "left", "emotion": "smile", "text": "Aku merasakannya. Tapi tekadku untuk mengembalikan langit yang hancur tidak akan goyah!"},
-        {"speaker": "Saki", "side": "right", "emotion": "smile", "text": "Bagus. Aku akan mengawasi portal pelarian dari sini. Hancurkan Sarang Void Core itu!"}
+        {"speaker": "Saki", "side": "right", "emotion": "worried", "text": "Hasumi, the atmosphere here is highly toxic. Your Willpower (WP) will drain much faster if you take a hit."},
+        {"speaker": "Hasumi", "side": "left", "emotion": "angry", "text": "I don't care! For my shattered world and this fallen nation, I will strike down the source of this plague!"},
+        {"speaker": "Saki", "side": "right", "emotion": "smile", "text": "That's the spirit. I will stabilize the barrier from outside the corruption radius. Destroy the Void Core, Hasumi!"}
     ],
     # ── Stage 3: Setelah Selesai / Boss Intro ──
     "clear_stage_2": [
-        {"speaker": "Lord HyperEnd", "side": "right", "emotion": "angry", "text": "Mermaid kecil yang berisik... Beraninya kau menembus sarang Void Core-ku!"},
-        {"speaker": "Hasumi", "side": "left", "emotion": "angry", "text": "Kau yang merusak lautan dan memecah belah langit! Aku akan menghentikanmu di sini!"},
-        {"speaker": "Lord HyperEnd", "side": "right", "emotion": "angry", "text": "Hahaha! Lautan ini akan tenggelam dalam kehampaan abadi. Hadapi murka Void Core!"}
+        {"speaker": "Lord HyperEnd", "side": "right", "emotion": "angry", "text": "Such a repulsive ray of light... How dare a mere Deliverer taint the purity of my Void Core!"},
+        {"speaker": "Hasumi", "side": "left", "emotion": "angry", "text": "You! You are the one who swallowed my world's sky into darkness! I will end your destructive reign right here!"},
+        {"speaker": "Lord HyperEnd", "side": "right", "emotion": "angry", "text": "Muahahaha! You're too late! All realities will drown in eternal emptiness. Face your true despair!"}
     ],
     # ── Ending / Win Dialogue ──
     "win_ending": [
-        {"speaker": "Lord HyperEnd", "side": "right", "emotion": "angry", "text": "T-Tidak mungkin! Energi cahayamu... menghancurkan kehampaan ku..."},
-        {"speaker": "Hasumi", "side": "left", "emotion": "smile", "text": "Akhirnya... cahayanya kembali. Lautan terasa hangat lagi."},
-        {"speaker": "Saki", "side": "right", "emotion": "smile", "text": "Kerja bagus, Hasumi! Portal dimensi telah terbuka kembali. Langit di atas mulai menyatu."},
-        {"speaker": "Saki", "side": "right", "emotion": "smile", "text": "Saatnya kamu pulang ke duniamu yang indah. Selamat tinggal, pahlawan laut!"},
-        {"speaker": "Hasumi", "side": "left", "emotion": "smile", "text": "Selamat tinggal Saki, terima kasih atas bantuannya! Aku tidak akan melupakan petualangan ini."}
+        {"speaker": "Lord HyperEnd", "side": "right", "emotion": "angry", "text": "W-What?! I-Impossible! Your light... it's piercing through my void... ARGHHHHH!"},
+        {"speaker": "Hasumi", "side": "left", "emotion": "smile", "text": "Hah... finally. The dark miasma is lifting. The forest is breathing again."},
+        {"speaker": "Saki", "side": "right", "emotion": "smile", "text": "Incredible, Hasumi! The Void anomaly has been neutralized. The nation's border is safe once again!"},
+        {"speaker": "Saki", "side": "right", "emotion": "smile", "text": "You have taken your first step as a true Deliverer. Are you ready to travel and protect other worlds?"},
+        {"speaker": "Hasumi", "side": "left", "emotion": "smile", "text": "Yes, Saki! As long as there are worlds to save, I will keep fighting. This adventure has just begun!"}
     ]
 }
 
@@ -111,23 +113,17 @@ class DialogueManager:
 
     def _load_portrait_sprites(self):
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        # Mengambil dari Project Base_OLD sesuai permintaan
-        aset_dir = os.path.join(base_dir, "..", "Project Base_OLD", "aset karakter_Hasumi")
+        # Mengambil dari assets/image/character/idle untuk karakter gameplay utama
+        aset_dir = os.path.join(base_dir, "..", "assets", "image", "character", "idle")
         h = self.PORTRAIT_H
 
         self._hasumi_idle = _load_sequence(
             aset_dir,
-            [f"front_idle_{i}.png" for i in range(4)],
+            [f"idle{i}.png" for i in range(1, 7)],
             h
         )
-        if not self._hasumi_idle:
-            self._hasumi_idle = _load_sequence(
-                aset_dir,
-                [f"idle_right{i}.png" for i in range(4)],
-                h
-            )
 
-        saki_new_dir = os.path.join(base_dir, "..", "Project Base_OLD", "Asset_Saki")
+        saki_new_dir = os.path.join(base_dir, "..", "OLD", "assets", "Asset_Saki")
         saki_new_file = "—Pngtree—game character anime comic girl_3932788.png"
         saki_new_path = os.path.join(saki_new_dir, saki_new_file)
 
@@ -188,6 +184,7 @@ class DialogueManager:
                     if self.on_complete_cb:
                         self.on_complete_cb()
         elif key == pygame.K_ESCAPE:
+            # Skip cutscene secara instan
             self.active = False
             if self.on_complete_cb:
                 self.on_complete_cb()
@@ -215,7 +212,7 @@ class DialogueManager:
         speaker  = current_line["speaker"]
         emotion  = current_line.get("emotion", "idle")
 
-        W, H = settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT
+        W, H = WINDOW_WIDTH, WINDOW_HEIGHT
 
         self._draw_portraits(screen, speaker, emotion)
 
@@ -279,7 +276,7 @@ class DialogueManager:
         screen.blit(hint, (W - hint.get_width() - 50, by + bh - 20))
 
     def _draw_portraits(self, screen, active_speaker, emotion):
-        W, H = settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT
+        W, H = WINDOW_WIDTH, WINDOW_HEIGHT
         ph    = self.PORTRAIT_H
 
         hasumi_active = (active_speaker == "Hasumi")
@@ -358,22 +355,15 @@ class DialogueManager:
         return lines
 
     def _render_hasumi_geo(self, screen, x, y, active=True, emotion="idle"):
-        # Gambar geometris vector Hasumi
         col = (255, 200, 120) if active else (100, 80, 50)
         hair_col = (230, 80, 120) if active else (100, 40, 50)
-        
-        # Hair back
         pygame.draw.ellipse(screen, hair_col, (x - 10, y + 20, 120, 220))
-        # Head
         pygame.draw.ellipse(screen, col, (x, y + 40, 100, 110))
-        # Eyes
         eye_col = (80, 200, 255) if active else (40, 100, 120)
         pygame.draw.circle(screen, eye_col, (x + 35, y + 85), 7)
         pygame.draw.circle(screen, eye_col, (x + 65, y + 85), 7)
         pygame.draw.circle(screen, (0, 0, 0), (x + 35, y + 85), 3)
         pygame.draw.circle(screen, (0, 0, 0), (x + 65, y + 85), 3)
-        
-        # Mouth
         if emotion == "smile":
             pygame.draw.arc(screen, (200, 50, 50), (x + 40, y + 105, 20, 15), math.pi, 0, 2)
         else:
@@ -382,16 +372,11 @@ class DialogueManager:
     def _render_saki_geo(self, screen, x, y, active=True, emotion="idle"):
         col = (245, 210, 160) if active else (95, 80, 65)
         hair_col = (0, 200, 230) if active else (0, 90, 105)
-        
-        # God-ray hair
         pygame.draw.ellipse(screen, hair_col, (x - 20, y + 10, 140, 240))
-        # Head
         pygame.draw.ellipse(screen, col, (x, y + 40, 100, 110))
-        # Tech eyes
         eye_col = (0, 255, 200) if active else (0, 100, 80)
         pygame.draw.rect(screen, eye_col, (x + 25, y + 80, 16, 8))
         pygame.draw.rect(screen, eye_col, (x + 59, y + 80, 16, 8))
-        
         if emotion == "smile":
             pygame.draw.arc(screen, (200, 50, 50), (x + 40, y + 105, 20, 15), math.pi, 0, 2)
         else:
@@ -400,11 +385,8 @@ class DialogueManager:
     def _render_lord_hyperend_geo(self, screen, x, y, active=True):
         col = (100, 0, 120) if active else (40, 0, 50)
         glow = (255, 0, 120) if active else (100, 0, 50)
-        
-        # Void shroud
         pygame.draw.polygon(screen, col, [
             (x - 20, y + 250), (x + 50, y), (x + 120, y + 250)
         ])
-        # Eye core
         pygame.draw.circle(screen, glow, (x + 50, y + 100), 20)
         pygame.draw.circle(screen, (0, 0, 0), (x + 50, y + 100), 8)

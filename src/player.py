@@ -1,6 +1,7 @@
 # player.py
 import pygame
 import os
+import random
 from settings import *
 
 def import_folder(path):
@@ -66,6 +67,17 @@ class Player(pygame.sprite.Sprite):
         self.combo_index = 0     
         self.combo_timer = 0     
         self.combo_window = 30   
+
+        # Atribut Status & Leveling (Langkah 10 + Level System)
+        self.level = 1
+        self.xp = 0
+        self.xp_to_next_level = 100 # XP awal yang dibutuhkan untuk naik level
+        self.max_hp = 100
+        self.hp = 100
+        self.score = 0
+        self.base_attack_damage = 20 
+        self.hurt_timer = 0
+        self.hurt_duration = 30 
 
         # Referensi grup sprite
         self.collision_sprites = collision_sprites
@@ -169,6 +181,56 @@ class Player(pygame.sprite.Sprite):
             self.jump_count += 1
             self.state = "jump"
 
+    def gain_xp(self, amount):
+        if self.hp <= 0:
+            return
+            
+        self.xp += amount
+        from sprites import DamageText
+        # Munculkan indikator XP mengambang warna hijau
+        DamageText((self.rect.centerx, self.rect.top - 30), f"+{amount} XP", self.groups()[0], color=(100, 255, 100))
+        
+        # Pengecekan naik Level
+        if self.xp >= self.xp_to_next_level:
+            self.level_up()
+
+    def level_up(self):
+        self.level += 1
+        self.xp -= self.xp_to_next_level
+        # Meningkatkan kebutuhan XP level berikutnya
+        self.xp_to_next_level = int(self.xp_to_next_level * 1.4)
+        
+        # Peningkatan Stats & Damage
+        self.base_attack_damage += 6
+        self.max_hp = int(self.max_hp * 1.1)
+        self.hp = self.max_hp # Pulihkan darah penuh saat level up
+        
+        # Munculkan teks LEVEL UP mengambang warna cyan
+        from sprites import DamageText
+        DamageText((self.rect.centerx, self.rect.top - 45), "LEVEL UP!", self.groups()[0], color=(0, 255, 255))
+        print(f"[Level Up] Hasumi naik ke Level {self.level}! Base DMG meningkat menjadi {self.base_attack_damage}.")
+
+    def take_damage(self, amount, knockback_dir):
+        if self.hurt_timer > 0 or self.hp <= 0:
+            return
+            
+        from sprites import DamageText
+        
+        if self.is_shielding:
+            DamageText((self.rect.centerx, self.rect.top - 15), 0, self.groups()[0], color=(0, 230, 255))
+            return
+            
+        self.hp -= amount
+        if self.hp < 0:
+            self.hp = 0
+            
+        self.hurt_timer = self.hurt_duration
+        DamageText((self.rect.centerx, self.rect.top - 15), amount, self.groups()[0], color=(255, 60, 60))
+        
+        self.direction.x = knockback_dir * 1.5
+        self.direction.y = -220
+        self.on_floor = False
+
     def update_animation(self):
         self.anim_tick += 1
         speed_threshold = self.anim_speeds.get(self.state, 15)
@@ -179,7 +241,6 @@ class Player(pygame.sprite.Sprite):
             
         frames = self.animations[self.state]
         
-        # Transisi Selesai Menyerang
         if self.state.startswith('attack_') and self.frame_index >= len(frames):
             self.is_attacking = False
             self.state = 'idle'
@@ -188,7 +249,6 @@ class Player(pygame.sprite.Sprite):
             self.combo_timer = 1 
             frames = self.animations['idle']
             
-        # Tahan di frame terakhir jika melompat
         frame_idx = self.frame_index % len(frames)
         if self.state == 'jump' and frame_idx >= len(frames):
             frame_idx = len(frames) - 1
@@ -199,6 +259,10 @@ class Player(pygame.sprite.Sprite):
             self.image = pygame.transform.flip(image, True, False)
         else:
             self.image = image
+            
+        if self.hurt_timer > 0:
+            if (self.hurt_timer // 4) % 2 == 0:
+                self.image = pygame.Surface(self.image.get_size(), pygame.SRCALPHA)
             
         self.rect = self.image.get_rect(midbottom=self.hitbox_rect.midbottom)
 
@@ -216,7 +280,7 @@ class Player(pygame.sprite.Sprite):
                     attack_rect = pygame.Rect(self.hitbox_rect.left - hitbox_width, self.hitbox_rect.top, hitbox_width, self.hitbox_rect.height)
                     knockback_dir = -1
                 
-                d1 = 20
+                d1 = self.base_attack_damage
                 d2 = d1 * 2
                 d3 = (d1 + d2) * 3
                 
@@ -233,7 +297,15 @@ class Player(pygame.sprite.Sprite):
                     if enemy.rect.colliderect(attack_rect):
                         if hasattr(enemy, 'take_damage'):
                             enemy.take_damage(damage, knockback_dir)
-                        print(f"[Combo {self.combo_index}] Tebasan mengenai musuh! Damage: {damage}, Arah knockback: {knockback_dir}")
+                            
+                            from sprites import DamageText
+                            DamageText((enemy.rect.centerx + random.randint(-15, 15), enemy.rect.top - 15), damage, self.groups()[0], color=(255, 220, 50))
+                            
+                            if enemy.hp <= 0:
+                                self.score += 100
+                                # Hadiahi 25 XP ke pemain setiap berhasil mengalahkan musuh
+                                self.gain_xp(25)
+                                
                         self.has_dealt_damage = True
 
     def collision(self, direction):
@@ -262,12 +334,10 @@ class Player(pygame.sprite.Sprite):
                         self.direction.y = 0
 
     def move(self, dt):
-        # 1. Pergerakan Horizontal
         self.pos.x += self.direction.x * self.speed * dt
         self.hitbox_rect.centerx = round(self.pos.x)
         self.collision('horizontal')
         
-        # 2. Pergerakan Vertikal
         if not self.on_floor and self.jump_count == 0:
             self.jump_count = 1
             
@@ -278,6 +348,9 @@ class Player(pygame.sprite.Sprite):
         self.collision('vertical')
 
     def update(self, dt):
+        if self.hurt_timer > 0:
+            self.hurt_timer -= 1
+            
         if self.combo_timer > 0:
             self.combo_timer += 1
             if self.combo_timer > self.combo_window:
