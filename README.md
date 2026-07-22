@@ -10,8 +10,8 @@ Sebuah game platformer 2D aksi menggunakan bahasa pemrograman **Python** dan **P
 | :--- | :--- |
 | **Bergerak Kiri / Kanan** | `A` / `D` atau `Panah Kiri` / `Panah Kanan` |
 | **Melompat (Mendukung Double Jump)** | `Spasi` / `W` / `Panah Atas` |
-| **Tebasan Pedang (3-Hit Combo)** | `Klik Kanan Mouse` |
-| **Bertahan / Shield** | `Klik Kiri Mouse` (Tahan) |
+| **Tebasan Pedang (3-Hit Combo)** | `Klik Kiri Mouse` |
+| **Bertahan / Shield** | `Klik Kanan Mouse` (Tahan) |
 | **Keluar Game** | `ESC` |
 
 ---

@@ -107,8 +107,8 @@ class Player(pygame.sprite.Sprite):
         keys = pygame.key.get_pressed()
         mouse_buttons = pygame.mouse.get_pressed()
         
-        # 1. Mekanik Shield (Klik Kiri)
-        if mouse_buttons[0] and self.on_floor:
+        # 1. Mekanik Shield (Klik Kanan Mouse)
+        if mouse_buttons[2] and self.on_floor:
             self.is_shielding = True
             self.direction.x = 0
             self.state = "shield"
@@ -118,8 +118,8 @@ class Player(pygame.sprite.Sprite):
         else:
             self.is_shielding = False
             
-        # 2. Mekanik Attack Combo (Klik Kanan)
-        if mouse_buttons[2] and not self.is_attacking:
+        # 2. Mekanik Attack Combo (Klik Kiri Mouse)
+        if mouse_buttons[0] and not self.is_attacking:
             if self.combo_timer > 0 and self.combo_timer <= self.combo_window:
                 self.combo_index = (self.combo_index % 3) + 1
             else:
@@ -216,10 +216,6 @@ class Player(pygame.sprite.Sprite):
                     attack_rect = pygame.Rect(self.hitbox_rect.left - hitbox_width, self.hitbox_rect.top, hitbox_width, self.hitbox_rect.height)
                     knockback_dir = -1
                 
-                # Perhitungan Multiple Damage Sesuai Instruksi User:
-                # Attack 1 base damage = 20
-                # Attack 2 damage = damage 1 * 2 = 40
-                # Attack 3 damage = (damage 1 + damage 2) * 3 = (20 + 40) * 3 = 180
                 d1 = 20
                 d2 = d1 * 2
                 d3 = (d1 + d2) * 3
@@ -236,7 +232,6 @@ class Player(pygame.sprite.Sprite):
                 for enemy in self.enemy_sprites:
                     if enemy.rect.colliderect(attack_rect):
                         if hasattr(enemy, 'take_damage'):
-                            # Knockback juga meningkat seiring damage yang lebih tinggi
                             enemy.take_damage(damage, knockback_dir)
                         print(f"[Combo {self.combo_index}] Tebasan mengenai musuh! Damage: {damage}, Arah knockback: {knockback_dir}")
                         self.has_dealt_damage = True
