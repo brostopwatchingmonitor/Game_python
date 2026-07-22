@@ -223,9 +223,10 @@ class BaseEnemy(pygame.sprite.Sprite):
                 fade.fill((100, 0, 0, 80), special_flags=pygame.BLEND_RGBA_ADD)
                 scaled = fade
                 
-            # Padding untuk menyesuaikan dengan rect
-            padded = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-            draw_x = self.width // 2 - scale_w // 2
+            # Padding untuk menyesuaikan dengan rect fisika enemy
+            surf_w = max(self.width, scale_w)
+            padded = pygame.Surface((surf_w, self.height), pygame.SRCALPHA)
+            draw_x = surf_w // 2 - scale_w // 2
             draw_y = self.height - scale_h
             padded.blit(scaled, (draw_x, draw_y))
             self.image = padded
