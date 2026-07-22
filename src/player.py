@@ -1,354 +1,295 @@
+# player.py
 import pygame
-from sprites import AnimatedSprites
-from timer import Timer
-from stage import *
+import os
+from settings import *
 
-class Player(AnimatedSprites):
-    def __init__(self, pos, groups, collision_sprites, frames, create_bullet):
-        # Inisialisasi frame & animasi (list atau dict)
-        self.animations = None
-        if isinstance(frames, dict):
-            self.animations = frames
-            self.frames = self.animations.get('idle', [])
-        else:
-            self.frames = frames
+def import_folder(path):
+    surface_list = []
+    if os.path.exists(path):
+        for _, __, img_files in os.walk(path):
+            sorted_files = sorted(img_files, key=lambda x: int(''.join(filter(str.isdigit, x)) or 0))
+            for image_name in sorted_files:
+                if image_name.endswith('.png'):
+                    full_path = os.path.join(path, image_name)
+                    try:
+                        image_surf = pygame.image.load(full_path).convert_alpha()
+                        surface_list.append(image_surf)
+                    except Exception as e:
+                        print(f"Gagal memuat {image_name}: {e}")
+    return surface_list
 
-        super().__init__(pos, self.frames, groups)
-        self.flip = False
-        self.create_bullet = create_bullet
-        # Jika frame kosong, tentukan rect fallback. Jika berisi, set rect 40x80 dengan image_offset alignment
-        if not self.frames:
-            self.rect = pygame.Rect(pos[0], pos[1], 32, 48)
-            self.image_offset = pygame.Vector2(0, 0)
-        else:
-            self.rect = pygame.Rect(pos[0], pos[1], 40, 80)
-            self.image_offset = pygame.Vector2(0, 0)
-        # movement & collision
-        self.direction = pygame.Vector2()
-        self.collision_sprites = collision_sprites
-        self.speed = 400
-        self.gravity = 40
+class Player(pygame.sprite.Sprite):
+    def __init__(self, pos, groups, collision_sprites, enemy_sprites=None):
+        super().__init__(groups)
+        
+        # Load Animasi
+        self.load_animations()
+        self.state = 'idle'
+        
+        # Variabel Animasi persis seperti Proyek Lama (Tick-Based)
+        self.anim_tick = 0
+        self.frame_index = 0
+        self.anim_speeds = {
+            "idle": 20, 
+            "run": 8, 
+            "jump": 15, 
+            "attack_1": 6, 
+            "attack_2": 6, 
+            "attack_3": 6, 
+            "shield": 10
+        }
+        self.facing_right = True
+
+        # Set gambar awal
+        self.image = self.animations['idle'][0] if self.animations['idle'] else pygame.Surface((32, 48))
+        self.rect = self.image.get_rect(topleft=pos)
+        self.hitbox_rect = self.rect.inflate(-12, -4)
+        
+        # Pergerakan & Fisika
+        self.direction = pygame.math.Vector2()
+        self.pos = pygame.math.Vector2(self.hitbox_rect.center)
+        self.speed = 200
+        self.gravity = 1000
+        self.jump_speed = -360
         self.on_floor = False
         
-        # New movement mode: 'default' (platformer) or 'boss' (top-down)
-        self.movement_mode = "default"
-        self.camera_offset = pygame.Vector2()
-
-        # Stats RPG untuk UI
-        self.hp = 100
-        self.max_hp = 100
-        self.wp = 60         # stamina / willpower
-        self.max_wp = 60
-        self.level = 1
-        self.gold = 0
-        self.xp = 0
-        self.xp_to_lv = 100
-        self.attack = 30
-        self._wp_exhausted = False
-
-        # Dash mechanics
-        self.dashing = False
-        self.dash_timer = Timer(200) # durasi dash 200ms
-        self.dash_cooldown = Timer(800) # cd dash 800ms
-        self.dash_direction = 0
-        self.dash_speed = 900
-        self.invincible = False      # Status kebal saat dash
-
-        # timer
-        self.shoot_timer = Timer(500)
-        self.hurt_timer = Timer(300)
-
-    def take_damage(self, amount):
-        if self.invincible or self.hp <= 0:
-            return
-        self.hp = max(0, self.hp - amount)
-        self.hurt_timer.activate()
-
-    def gain_xp(self, amount, stage_idx=0):
-        self.xp += amount
-        if self.xp >= self.xp_to_lv:
-            self.xp -= self.xp_to_lv
-            self.level += 1
-            if stage_idx == 0:
-                self.xp_to_lv = int(self.xp_to_lv * 1.25)
-            elif stage_idx == 1:
-                self.xp_to_lv = int(self.xp_to_lv * 1.35)
-            elif stage_idx == 2:
-                self.xp_to_lv = int(self.xp_to_lv * 1.50)
-            else:
-                self.xp_to_lv = int(self.xp_to_lv * 1.60)
-            
-            # Tiap level naik:
-            self.max_hp += 15        # Max HP bertambah +15
-            self.hp = self.max_hp    # Darah (HP) kembali penuh
-            self.attack += 5         # Damage (Attack) bertambah +5
-            self.max_wp += 5         # Max stamina (WP) bertambah +5
-            self.wp = self.max_wp
-            print(f"LEVEL UP! Level {self.level} - HP Penuh, Damage +5, MaxHP +15! {self.xp_to_lv}")
-    
-    def input(self):
-        # Jika sedang dash, abaikan input gerakan biasa
-        if self.dashing:
-            return
-
-        keys = pygame.key.get_pressed()
+        # Mekanik Double Jump
+        self.max_jumps = 2
+        self.jump_count = 0
         
-        if self.movement_mode == "boss":
-            # 8-directional movement in Top-Down mode
-            self.direction.x = int(keys[pygame.K_d]) - int(keys[pygame.K_a])
-            self.direction.y = int(keys[pygame.K_s]) - int(keys[pygame.K_w])
-            if self.direction.length() > 0:
-                self.direction = self.direction.normalize()
-        else:
-            # Platformer movement
-            self.direction.x = int(keys[pygame.K_d]) - int(keys[pygame.K_a])
-            
-            # Lompat mengonsumsi 15 Stamina (WP)
-            if keys[pygame.K_SPACE] and self.on_floor:
-                if self.wp >= 15:
-                    self.direction.y = -20
-                    self.wp -= 15
-                else:
-                    print("Stamina tidak cukup untuk melompat!")
+        # Mekanik Combat & Shield Combo (Langkah 8 + Combo)
+        self.is_attacking = False
+        self.is_shielding = False
+        self.has_dealt_damage = False
+        
+        # Sistem Combo
+        self.combo_index = 0     
+        self.combo_timer = 0     
+        self.combo_window = 30   
 
-        # Mouse Click Action: Klik Kiri = Tembak, Klik Kanan = Dash (Dash hanya di Platformer)
+        # Referensi grup sprite
+        self.collision_sprites = collision_sprites
+        self.enemy_sprites = enemy_sprites if enemy_sprites is not None else pygame.sprite.Group()
+
+    def load_animations(self):
+        self.animations = {
+            'idle': [], 'run': [], 'jump': [], 
+            'attack_1': [], 'attack_2': [], 'attack_3': [], 
+            'shield': []
+        }
+        
+        folder_mapping = {
+            'idle': 'idle',
+            'run': 'run',
+            'jump': 'jump',
+            'attack_1': 'attack_1',
+            'attack_2': 'attack_2',
+            'attack_3': 'attack_3',
+            'shield': 'shield'
+        }
+        
+        for state, folder in folder_mapping.items():
+            folder_path = os.path.join(ASSETS_DIR, 'image', 'character', folder)
+            self.animations[state] = import_folder(folder_path)
+            
+        for state, frames in self.animations.items():
+            if not frames:
+                print(f"[Player] Warning: Folder '{state}' kosong. Menggunakan fallback.")
+                fallback_surf = pygame.Surface((32, 48))
+                fallback_surf.fill((0, 150, 255) if state == 'idle' else (255, 100, 0))
+                self.animations[state] = [fallback_surf]
+
+    def input(self):
+        if self.is_attacking:
+            self.direction.x = 0
+            return
+            
+        keys = pygame.key.get_pressed()
         mouse_buttons = pygame.mouse.get_pressed()
         
-        # Tembak
-        if mouse_buttons[0] and not self.shoot_timer:
-            if self.movement_mode == "boss":
-                # Aim at mouse position relative to player screen coordinates
-                mouse_pos = pygame.mouse.get_pos()
-                player_screen_center = pygame.Vector2(self.rect.center) + self.camera_offset
-                direction_vec = pygame.Vector2(mouse_pos) - player_screen_center
-                if direction_vec.length() == 0:
-                    direction_vec = pygame.Vector2(1, 0)
-                self.create_bullet(self.rect.center, direction_vec)
-            else:
-                self.create_bullet(self.rect.center, -1 if self.flip else 1)
-            self.shoot_timer.activate()
-            
-        # Dash menggunakan Klik Kanan (mengonsumsi 20 Stamina) - Hanya Platformer
-        if self.movement_mode != "boss" and mouse_buttons[2] and not self.dash_timer and not self.dash_cooldown and self.wp >= 20:
-            self.dash_direction = self.direction.x if self.direction.x != 0 else (-1 if self.flip else 1)
-            self.dashing = True
-            self.invincible = True
-            self.wp -= 20
-            self.dash_timer.activate()
-            self.dash_cooldown.activate()
-
-    def move(self, dt):
-        if self.movement_mode == "boss":
-            # Top-down free movement
-            self.rect.x += self.direction.x * self.speed * dt
-            self.collision('horizontal')
-            self.rect.y += self.direction.y * self.speed * dt
-            self.collision('vertical')
+        # 1. Mekanik Shield (Klik Kiri)
+        if mouse_buttons[0] and self.on_floor:
+            self.is_shielding = True
+            self.direction.x = 0
+            self.state = "shield"
+            self.combo_index = 0
+            self.combo_timer = 0
+            return
         else:
-            # Platformer movement
-            if self.dashing:
-                # Gerakan Dash cepat secara horizontal
-                self.rect.x += self.dash_direction * self.dash_speed * dt
-                self.collision('horizontal')
-                self.direction.y = 0 # Abaikan gravitasi saat dash
+            self.is_shielding = False
+            
+        # 2. Mekanik Attack Combo (Klik Kanan)
+        if mouse_buttons[2] and not self.is_attacking:
+            if self.combo_timer > 0 and self.combo_timer <= self.combo_window:
+                self.combo_index = (self.combo_index % 3) + 1
             else:
-                # Gerakan biasa
-                self.rect.x += self.direction.x * self.speed * dt
-                self.collision('horizontal')
+                self.combo_index = 1
                 
-                # vertical movement
-                self.direction.y += self.gravity * dt
-                self.rect.y += self.direction.y
-                self.collision('vertical')
+            self.is_attacking = True
+            self.has_dealt_damage = False
+            self.state = f"attack_{self.combo_index}"
+            self.frame_index = 0
+            self.anim_tick = 0
+            self.direction.x = 0
+            self.combo_timer = 0
+            return
+
+        # Input horizontal normal
+        self.direction.x = 0
+        moving = False
+        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+            self.direction.x = 1
+            self.facing_right = True
+            moving = True
+        elif keys[pygame.K_LEFT] or keys[pygame.K_a]:
+            self.direction.x = -1
+            self.facing_right = False
+            moving = True
+            
+        # Logika State Gerakan di Tanah
+        if self.on_floor:
+            if moving:
+                self.state = "run"
+            else:
+                self.state = "idle"
+
+    def jump(self):
+        if self.is_attacking or self.is_shielding:
+            return
+            
+        if self.on_floor:
+            self.direction.y = self.jump_speed
+            self.on_floor = False
+            self.combo_index = 0
+            self.combo_timer = 0
+            self.jump_count = 1
+            self.state = "jump"
+        elif self.jump_count < self.max_jumps:
+            self.direction.y = self.jump_speed
+            self.jump_count += 1
+            self.state = "jump"
+
+    def update_animation(self):
+        self.anim_tick += 1
+        speed_threshold = self.anim_speeds.get(self.state, 15)
+        
+        if self.anim_tick >= speed_threshold:
+            self.anim_tick = 0
+            self.frame_index += 1
+            
+        frames = self.animations[self.state]
+        
+        # Transisi Selesai Menyerang
+        if self.state.startswith('attack_') and self.frame_index >= len(frames):
+            self.is_attacking = False
+            self.state = 'idle'
+            self.frame_index = 0
+            self.anim_tick = 0
+            self.combo_timer = 1 
+            frames = self.animations['idle']
+            
+        # Tahan di frame terakhir jika melompat
+        frame_idx = self.frame_index % len(frames)
+        if self.state == 'jump' and frame_idx >= len(frames):
+            frame_idx = len(frames) - 1
+            
+        image = frames[frame_idx]
+        
+        if not self.facing_right:
+            self.image = pygame.transform.flip(image, True, False)
+        else:
+            self.image = image
+            
+        self.rect = self.image.get_rect(midbottom=self.hitbox_rect.midbottom)
+
+    def check_attack_collisions(self):
+        if self.state.startswith('attack_') and not self.has_dealt_damage:
+            frames = self.animations[self.state]
+            active_frame = len(frames) // 2
+            
+            if self.frame_index == active_frame:
+                hitbox_width = 48
+                if self.facing_right:
+                    attack_rect = pygame.Rect(self.hitbox_rect.right, self.hitbox_rect.top, hitbox_width, self.hitbox_rect.height)
+                    knockback_dir = 1
+                else:
+                    attack_rect = pygame.Rect(self.hitbox_rect.left - hitbox_width, self.hitbox_rect.top, hitbox_width, self.hitbox_rect.height)
+                    knockback_dir = -1
+                
+                # Perhitungan Multiple Damage Sesuai Instruksi User:
+                # Attack 1 base damage = 20
+                # Attack 2 damage = damage 1 * 2 = 40
+                # Attack 3 damage = (damage 1 + damage 2) * 3 = (20 + 40) * 3 = 180
+                d1 = 20
+                d2 = d1 * 2
+                d3 = (d1 + d2) * 3
+                
+                if self.combo_index == 1:
+                    damage = d1
+                elif self.combo_index == 2:
+                    damage = d2
+                elif self.combo_index == 3:
+                    damage = d3
+                else:
+                    damage = d1
+                    
+                for enemy in self.enemy_sprites:
+                    if enemy.rect.colliderect(attack_rect):
+                        if hasattr(enemy, 'take_damage'):
+                            # Knockback juga meningkat seiring damage yang lebih tinggi
+                            enemy.take_damage(damage, knockback_dir)
+                        print(f"[Combo {self.combo_index}] Tebasan mengenai musuh! Damage: {damage}, Arah knockback: {knockback_dir}")
+                        self.has_dealt_damage = True
 
     def collision(self, direction):
         for sprite in self.collision_sprites:
-            if sprite.rect.colliderect(self.rect):
+            if sprite.rect.colliderect(self.hitbox_rect):
                 if direction == 'horizontal':
-                    if self.direction.x > 0 or (self.dashing and self.dash_direction > 0):
-                        self.rect.right = sprite.rect.left
-                    elif self.direction.x < 0 or (self.dashing and self.dash_direction < 0):
-                        self.rect.left = sprite.rect.right
+                    if self.direction.x > 0:
+                        self.hitbox_rect.right = sprite.rect.left
+                        self.pos.x = self.hitbox_rect.centerx
+                    elif self.direction.x < 0:
+                        self.hitbox_rect.left = sprite.rect.right
+                        self.pos.x = self.hitbox_rect.centerx
+                
                 elif direction == 'vertical':
-                    if self.movement_mode == "boss":
-                        if self.direction.y > 0:
-                            self.rect.bottom = sprite.rect.top
-                        elif self.direction.y < 0:
-                            self.rect.top = sprite.rect.bottom
-                    else:
-                        if self.direction.y > 0: # moving down
-                            self.rect.bottom = sprite.rect.top
-                            self.direction.y = 0
-                        elif self.direction.y < 0: # moving up
-                            self.rect.top = sprite.rect.bottom
-                            self.direction.y = 0
+                    if self.direction.y > 0:
+                        self.hitbox_rect.bottom = sprite.rect.top
+                        self.pos.y = self.hitbox_rect.centery
+                        self.direction.y = 0
+                        self.on_floor = True
+                        self.jump_count = 0
+                        if self.state == "jump":
+                            self.state = "idle"
+                    elif self.direction.y < 0:
+                        self.hitbox_rect.top = sprite.rect.bottom
+                        self.pos.y = self.hitbox_rect.centery
+                        self.direction.y = 0
 
-    def check_floor(self):
-        if self.movement_mode == "boss":
-            self.on_floor = True
-            return
-        bottom_rect = pygame.Rect(0, 0, self.rect.width, 2)
-        bottom_rect.midtop = self.rect.midbottom
-        level_rects = [sprite.rect for sprite in self.collision_sprites]
-        self.on_floor = bottom_rect.collidelist(level_rects) >= 0
-    
-    def animate(self, dt): 
-        if not self.frames:
-            # Fallback jika aset gambar tidak ada (gambar geometris dinamis)
-            self.image = pygame.Surface((32, 48), pygame.SRCALPHA)
-            color = (230, 80, 120) if not self.invincible or (pygame.time.get_ticks() // 100) % 2 == 0 else (230, 80, 120, 100)
-            pygame.draw.rect(self.image, color, (0, 0, 32, 48), border_radius=4)
-            # Eyes
-            eye_x = 22 if not self.flip else 6
-            pygame.draw.circle(self.image, (255, 255, 255), (eye_x, 15), 4)
-            pygame.draw.circle(self.image, (0, 0, 0), (eye_x + (1 if not self.flip else -1), 15), 2)
-            return
-
-        if self.animations and isinstance(self.animations, dict):
-            # Tentukan state aktif
-            if self.hp <= 0:
-                state = 'dead'
-            elif self.hurt_timer:
-                state = 'hurt'
-            elif self.shoot_timer:
-                state = 'attack_1'
-            elif not self.on_floor:
-                state = 'jump'
-            elif self.dashing:
-                state = 'run'
-            elif self.direction.x != 0 or (self.movement_mode == "boss" and self.direction.length() > 0):
-                state = 'walk' if self.animations.get('walk') else 'run'
-            else:
-                state = 'idle'
-                
-            active_frames = self.animations.get(state, [])
-            if not active_frames:
-                active_frames = self.animations.get('idle', [])
-                
-            if active_frames:
-                # Kecepatan animasi disesuaikan dengan state
-                if state == 'dead':
-                    anim_speed = 6
-                elif state == 'hurt':
-                    anim_speed = 6
-                elif state == 'attack_1':
-                    anim_speed = 12
-                elif state in ('run', 'walk'):
-                    anim_speed = 12
-                elif state == 'idle':
-                    anim_speed = 8
-                else:
-                    anim_speed = 10
-                
-                # Reset frame index if state changed to avoid index out of bounds or animation glitch
-                if not hasattr(self, '_last_state') or self._last_state != state:
-                    self.frame_index = 0
-                    self._last_state = state
-
-                if state == 'idle' or self.direction.x != 0 or not self.on_floor or self.dashing or (self.movement_mode == "boss" and self.direction.length() > 0) or state in ('attack_1', 'hurt', 'dead'):
-                    self.frame_index += anim_speed * dt
-                else:
-                    self.frame_index = 0
-                    
-                # Dapatkan indeks frame aktif
-                if state == 'jump':
-                    # Menahan frame di udara pada akhir animasi lompat
-                    idx = min(int(self.frame_index), len(active_frames) - 1)
-                elif state == 'dead':
-                    idx = min(int(self.frame_index), len(active_frames) - 1)
-                elif state == 'hurt':
-                    idx = min(int(self.frame_index), len(active_frames) - 1)
-                elif state == 'attack_1':
-                    idx = min(int(self.frame_index), len(active_frames) - 1)
-                else:
-                    idx = int(self.frame_index) % len(active_frames)
-                    
-                self.image = active_frames[idx]
-                
-                # Mengatur hadap (flip)
-                if self.movement_mode == "boss":
-                    mouse_pos = pygame.mouse.get_pos()
-                    player_screen_center = pygame.Vector2(self.rect.center) + self.camera_offset
-                    self.flip = mouse_pos[0] < player_screen_center.x
-                else:
-                    if self.dashing:
-                        self.flip = self.dash_direction < 0
-                    elif self.direction.x != 0:
-                        self.flip = self.direction.x < 0
-                        
-                self.image = pygame.transform.flip(self.image, self.flip, False)
-                self.image_offset = pygame.Vector2(
-                    (self.rect.width - self.image.get_width()) / 2,
-                    self.rect.height - self.image.get_height()
-                )
-                return
-
-        # Fallback jika frames berupa list satu dimensi biasa (compat lama)
-        if self.movement_mode == "boss":
-            # Face the mouse position
-            mouse_pos = pygame.mouse.get_pos()
-            player_screen_center = pygame.Vector2(self.rect.center) + self.camera_offset
-            self.flip = mouse_pos[0] < player_screen_center.x
-            
-            if self.direction.length() > 0:
-                self.frame_index += self.animation_speed * dt 
-            else:
-                self.frame_index = 0
-            self.image = self.frames[int(self.frame_index) % len(self.frames)]
-            self.image = pygame.transform.flip(self.image, self.flip, False)
-        else:
-            if self.dashing:
-                self.flip = self.dash_direction < 0
-                self.image = pygame.transform.flip(self.frames[1], self.flip, False)
-            else:
-                if self.direction.x:
-                    self.frame_index += self.animation_speed * dt 
-                    self.flip = self.direction.x < 0
-                else:
-                    self.frame_index = 0
-                self.frame_index = 1 if not self.on_floor else self.frame_index
-                self.image = self.frames[int(self.frame_index) % len(self.frames)]
-                self.image = pygame.transform.flip(self.image, self.flip, False)
+    def move(self, dt):
+        # 1. Pergerakan Horizontal
+        self.pos.x += self.direction.x * self.speed * dt
+        self.hitbox_rect.centerx = round(self.pos.x)
+        self.collision('horizontal')
         
+        # 2. Pergerakan Vertikal
+        if not self.on_floor and self.jump_count == 0:
+            self.jump_count = 1
+            
+        self.on_floor = False
+        self.direction.y += self.gravity * dt
+        self.pos.y += self.direction.y * dt
+        self.hitbox_rect.centery = round(self.pos.y)
+        self.collision('vertical')
+
     def update(self, dt):
-        self.shoot_timer.update()
-        self.dash_timer.update()
-        self.dash_cooldown.update()
-        self.hurt_timer.update()
-
-        # Matikan status dash & kekebalan jika timer dash habis
-        if self.dashing and not self.dash_timer:
-            self.dashing = False
-            self.invincible = False
-
-        self.check_floor()
+        if self.combo_timer > 0:
+            self.combo_timer += 1
+            if self.combo_timer > self.combo_window:
+                self.combo_timer = 0
+                self.combo_index = 0
+            
         self.input()
         self.move(dt)
-
-        # Clamp player position within map boundaries if defined
-        map_w = getattr(self, 'map_width', None)
-        map_h = getattr(self, 'map_height', None)
-        if map_w is not None:
-            if self.rect.left < 0:
-                self.rect.left = 0
-            if self.rect.right > map_w:
-                self.rect.right = map_w
-        if map_h is not None:
-            if self.rect.top < 0:
-                self.rect.top = 0
-                self.direction.y = 0
-            if self.rect.bottom > map_h:
-                self.rect.bottom = map_h
-                self.direction.y = 0
-
-        self.animate(dt)
-
-        # Regenerasi Stamina (WP) otomatis jika di bawah max_wp
-        if self.wp < self.max_wp:
-            self.wp = min(self.max_wp, self.wp + 8 * dt)
-            
-        # Atur status kelelahan stamina
-        if self.wp <= 0:
-            self._wp_exhausted = True
-        elif self.wp >= 15:
-            self._wp_exhausted = False
+        self.update_animation()
+        self.check_attack_collisions()
