@@ -20,12 +20,13 @@ def import_folder(path):
     return surface_list
 
 class Player(pygame.sprite.Sprite):
-    def __init__(self, pos, groups, collision_sprites, enemy_sprites=None):
+    def __init__(self, pos, groups, collision_sprites, enemy_sprites=None, game=None):
         super().__init__(groups)
         
         # Load Animasi
         self.load_animations()
         self.state = 'idle'
+        self.game = game # Referensi ke game utama untuk memutar sfx
         
         # Variabel Animasi persis seperti Proyek Lama (Tick-Based)
         self.anim_tick = 0
@@ -71,11 +72,13 @@ class Player(pygame.sprite.Sprite):
         # Atribut Status & Leveling (Langkah 10 + Level System)
         self.level = 1
         self.xp = 0
-        self.xp_to_next_level = 100 # XP awal yang dibutuhkan untuk naik level
+        self.xp_to_next_level = 100
         self.max_hp = 100
-        self.hp = 100
+        self.hp = self.max_hp
         self.score = 0
-        self.base_attack_damage = 20 
+        self.base_attack_damage = 20
+        self.speed = 200
+        self.last_hit_time = 0 # Menyimpan tick saat terakhir kali terkena hit
         self.hurt_timer = 0
         self.hurt_duration = 30 
 
@@ -140,6 +143,16 @@ class Player(pygame.sprite.Sprite):
             self.is_attacking = True
             self.has_dealt_damage = False
             self.state = f"attack_{self.combo_index}"
+            
+            # Putar efek suara tebasan pedang sesuai combo index
+            if self.game is not None:
+                if self.combo_index == 1 and hasattr(self.game, 'sfx_attack1'):
+                    self.game.sfx_attack1.play()
+                elif self.combo_index == 2 and hasattr(self.game, 'sfx_attack2'):
+                    self.game.sfx_attack2.play()
+                elif self.combo_index == 3 and hasattr(self.game, 'sfx_attack3'):
+                    self.game.sfx_attack3.play()
+            
             self.frame_index = 0
             self.anim_tick = 0
             self.direction.x = 0
@@ -187,6 +200,11 @@ class Player(pygame.sprite.Sprite):
             
         self.xp += amount
         from sprites import DamageText
+        
+        # Putar efek suara XP
+        if self.game is not None and hasattr(self.game, 'sfx_xp'):
+            self.game.sfx_xp.play()
+            
         # Munculkan indikator XP mengambang warna hijau
         DamageText((self.rect.centerx, self.rect.top - 30), f"+{amount} XP", self.groups()[0], color=(100, 255, 100))
         
@@ -225,6 +243,7 @@ class Player(pygame.sprite.Sprite):
             self.hp = 0
             
         self.hurt_timer = self.hurt_duration
+        self.last_hit_time = pygame.time.get_ticks() # Update waktu terakhir kali hit
         DamageText((self.rect.centerx, self.rect.top - 15), amount, self.groups()[0], color=(255, 60, 60))
         
         self.direction.x = knockback_dir * 1.5
@@ -303,6 +322,8 @@ class Player(pygame.sprite.Sprite):
                             
                             if enemy.hp <= 0:
                                 self.score += 100
+                                if self.game is not None and hasattr(self.game, 'sfx_coin'):
+                                    self.game.sfx_coin.play()
                                 # Hadiahi 25 XP ke pemain setiap berhasil mengalahkan musuh
                                 self.gain_xp(25)
                                 
@@ -356,6 +377,15 @@ class Player(pygame.sprite.Sprite):
             if self.combo_timer > self.combo_window:
                 self.combo_timer = 0
                 self.combo_index = 0
+                
+        # Fitur Heal Instan: Jika 3 detik tidak terkena hit, darah pulih penuh
+        current_time = pygame.time.get_ticks()
+        if self.hp > 0 and self.hp < self.max_hp:
+            if current_time - self.last_hit_time >= 3000:
+                self.hp = self.max_hp
+                from sprites import DamageText
+                DamageText((self.rect.centerx, self.rect.top - 50), "HP RESTORED!", self.groups()[0], color=(100, 255, 150))
+                self.last_hit_time = current_time # Cegah spamming tulisan melayang
             
         self.input()
         self.move(dt)

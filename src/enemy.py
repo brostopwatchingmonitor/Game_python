@@ -48,16 +48,21 @@ class BaseEnemy(pygame.sprite.Sprite):
         self.pos = pygame.math.Vector2(self.hitbox_rect.center)
         
         # Kecepatan dan atribut sesuai Tier
+        is_hard = False
+        if self.game is not None and hasattr(self.game, 'player') and self.game.player is not None:
+            if self.game.player.level >= 5:
+                is_hard = True
+                
         if self.enemy_type == 'tier_1':
             self.speed = 100
-            self.hp = 50
-            self.max_hp = 50
+            self.max_hp = 600 if is_hard else 50
+            self.hp = self.max_hp
             self.damage = 10
             self.detection_range = 300
         else: # tier_2
             self.speed = 140
-            self.hp = 80
-            self.max_hp = 80
+            self.max_hp = 1100 if is_hard else 80
+            self.hp = self.max_hp
             self.damage = 15
             self.detection_range = 450
             

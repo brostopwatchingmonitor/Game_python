@@ -15,6 +15,9 @@ from dialogue import DialogueManager
 class Game:
     def __init__(self):
         pygame.init()
+        # Inisialisasi Audio Mixer
+        pygame.mixer.init()
+        
         # Window utama (screen fisik)
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         pygame.display.set_caption("2D Platformer - Void Mermaid Action")
@@ -33,6 +36,28 @@ class Game:
         
         # Sistem Respawn Musuh
         self.respawn_queue = []
+        
+        # Load Sound Effects (SFX)
+        self.sfx_coin = pygame.mixer.Sound(os.path.join(ASSETS_DIR, 'audio', 'Sound_Efect', 'chieuk-coin-257878.mp3'))
+        self.sfx_xp = pygame.mixer.Sound(os.path.join(ASSETS_DIR, 'audio', 'Sound_Efect', 'freesound_gamestudio-exp-increase-loop-384930.mp3'))
+        self.sfx_purchase = pygame.mixer.Sound(os.path.join(ASSETS_DIR, 'audio', 'Sound_Efect', 'freesound_gamestudio-purchase-success-384963.mp3'))
+        
+        # SFX Hunusan Pedang (Attack Combo)
+        self.sfx_attack1 = pygame.mixer.Sound(os.path.join(ASSETS_DIR, 'audio', 'Sound_Efect', 'attack1.mp3'))
+        self.sfx_attack2 = pygame.mixer.Sound(os.path.join(ASSETS_DIR, 'audio', 'Sound_Efect', 'attack2.mp3'))
+        self.sfx_attack3 = pygame.mixer.Sound(os.path.join(ASSETS_DIR, 'audio', 'Sound_Efect', 'attack3.mp3'))
+        
+        # Jalur File Background Music (BGM)
+        self.bgm_default = os.path.join(ASSETS_DIR, 'audio', 'BG', 'white_records-sounds-crickets-and-nature-in-summer-background-singing-142461.mp3')
+        self.bgm_level5 = os.path.join(ASSETS_DIR, 'audio', 'BG', 'miguel-phonk_fVUWOaN.mp3')
+        self.current_bgm = None
+        
+        # State Machine Dasar
+        self.state = STATE_PLAYING
+        
+        # Pesan status toko untuk umpan balik visual
+        self.shop_message = "Selamat Datang di Toko Senjata Hasumi!"
+        self.shop_message_color = (255, 255, 255)
         
         # Load Map dan Spawn Entitas
         self.setup_map()
@@ -83,7 +108,7 @@ class Game:
                     player_pos = (obj.x * tile_scale, obj.y * tile_scale)
                     break
                     
-            self.player = Player(player_pos, self.all_sprites, self.collision_sprites, self.enemy_sprites)
+            self.player = Player(player_pos, self.all_sprites, self.collision_sprites, self.enemy_sprites, self)
 
             for obj in tmx_data.objects:
                 if obj.name == 'enemy':
@@ -91,13 +116,31 @@ class Game:
                     enemy_type = 'tier_1' if random.random() < 0.6 else 'tier_2'
                     BaseEnemy(enemy_pos, enemy_type, (self.all_sprites, self.enemy_sprites), self.collision_sprites, self.player, self)
         else:
-            self.player = Player((100, 200), self.all_sprites, self.collision_sprites, self.enemy_sprites)
+            self.player = Player((100, 200), self.all_sprites, self.collision_sprites, self.enemy_sprites, self)
             BaseEnemy((300, 200), 'tier_1', (self.all_sprites, self.enemy_sprites), self.collision_sprites, self.player, self)
 
         self.load_save()
+        self.current_bgm = None
+
+    def play_bgm(self, bgm_path):
+        if self.current_bgm == bgm_path:
+            return
+        self.current_bgm = bgm_path
+        try:
+            pygame.mixer.music.load(bgm_path)
+            pygame.mixer.music.play(-1)
+            pygame.mixer.music.set_volume(0.5)
+            print(f"[BGM] Memutar musik latar baru: {os.path.basename(bgm_path)}")
+        except Exception as e:
+            print(f"[BGM] Gagal memuat musik {bgm_path}: {e}")
+
+    def update_bgm(self):
+        if self.player.level >= 5:
+            self.play_bgm(self.bgm_level5)
+        else:
+            self.play_bgm(self.bgm_default)
 
     def end_dialogue(self):
-        # Callback saat dialog selesai/dilewati
         self.state = STATE_PLAYING
         print("[Dialogue] Dialog selesai atau dilewati. Memulai permainan!")
 
@@ -137,13 +180,23 @@ class Game:
                 print(f"[AutoSave] Gagal memuat progres: {e}")
 
     def queue_respawn(self, pos, enemy_type):
-        respawn_time = pygame.time.get_ticks() + 5000
+        if self.player.level >= 5:
+            respawn_delay = 500
+            difficulty_str = "HARD (GILA ABIS!)"
+        elif self.player.level >= 3:
+            respawn_delay = 3000
+            difficulty_str = "NORMAL"
+        else:
+            respawn_delay = 5000
+            difficulty_str = "EASY"
+
+        respawn_time = pygame.time.get_ticks() + respawn_delay
         self.respawn_queue.append({
             'pos': pos,
             'type': enemy_type,
             'time': respawn_time
         })
-        print(f"[Respawn] Musuh jenis {enemy_type} didaftarkan. Respawn dalam 5 detik.")
+        print(f"[Difficulty: {difficulty_str}] Musuh jenis {enemy_type} didaftarkan. Respawn dalam {respawn_delay/1000} detik.")
 
     def check_respawns(self):
         current_time = pygame.time.get_ticks()
@@ -154,7 +207,7 @@ class Game:
             print(f"[Respawn] Musuh di {item['pos']} telah muncul kembali!")
 
     def draw_hud(self):
-        hud_panel = pygame.Surface((180, 64), pygame.SRCALPHA)
+        hud_panel = pygame.Surface((180, 74), pygame.SRCALPHA)
         hud_panel.fill((20, 20, 30, 180))
         self.display_surface.blit(hud_panel, (8, 8))
         
@@ -182,13 +235,26 @@ class Game:
         text_score = font_score.render(f"COINS: {self.player.score}  [DMG: {self.player.base_attack_damage}]", True, (255, 210, 50))
         self.display_surface.blit(text_score, (14, 42))
         
+        if self.player.level >= 5:
+            diff_text = "HARD (GILA ABIS!)"
+            diff_color = (255, 50, 50)
+        elif self.player.level >= 3:
+            diff_text = "NORMAL"
+            diff_color = (250, 220, 50)
+        else:
+            diff_text = "EASY"
+            diff_color = (50, 255, 100)
+            
+        text_diff = font_small.render(f"DIFFICULTY: {diff_text}", True, diff_color)
+        self.display_surface.blit(text_diff, (14, 54))
+        
         text_shop_hint = font_small.render("[TEKAN B: TOKO]", True, (150, 150, 200))
         self.display_surface.blit(text_shop_hint, (100, 12))
         
         if self.player.is_shielding:
             font_shield = pygame.font.SysFont("Impact", 10)
             text_shield = font_shield.render("SHIELD ACTIVE", True, (0, 220, 255))
-            self.display_surface.blit(text_shield, (90, 42))
+            self.display_surface.blit(text_shield, (90, 54))
 
     def check_collisions(self):
         if self.player.hp <= 0:
@@ -271,6 +337,7 @@ class Game:
                 self.player.base_attack_damage += 10
                 self.shop_message = f"Sukses membeli! Base DMG meningkat menjadi {self.player.base_attack_damage}."
                 self.shop_message_color = (50, 255, 50)
+                self.sfx_purchase.play()
             else:
                 self.shop_message = "Koin Anda tidak cukup untuk membeli Pedang Tajam!"
                 self.shop_message_color = (255, 50, 50)
@@ -286,6 +353,7 @@ class Game:
                     self.player.hp = self.player.max_hp
                     self.shop_message = "Sukses memulihkan HP pemain menjadi penuh!"
                     self.shop_message_color = (50, 255, 50)
+                    self.sfx_purchase.play()
             else:
                 self.shop_message = "Koin Anda tidak cukup untuk membeli Ramuan Darah!"
                 self.shop_message_color = (255, 50, 50)
@@ -301,6 +369,7 @@ class Game:
                     self.player.speed = 260
                     self.shop_message = "Sukses membeli! Kecepatan lari meningkat menjadi 260."
                     self.shop_message_color = (50, 255, 50)
+                    self.sfx_purchase.play()
             else:
                 self.shop_message = "Koin Anda tidak cukup untuk membeli Sepatu Kilat!"
                 self.shop_message_color = (255, 50, 50)
@@ -328,12 +397,10 @@ class Game:
                 if event.type == pygame.QUIT:
                     self.running = False
                 elif event.type == pygame.KEYDOWN:
-                    # Input khusus saat dialog aktif
                     if self.state == "dialogue":
                         self.dialogue_manager.handle_key(event.key)
                         continue
                         
-                    # Pilihan tombol pada layar Game Over
                     elif self.state == "game_over":
                         if event.key == pygame.K_r:
                             self.setup_map()
@@ -368,13 +435,17 @@ class Game:
                 self.check_death_or_fall()
                 self.check_respawns()
                 
+                # Pembaruan BGM dinamis mengikuti level pemain
+                self.update_bgm()
+                
                 self.display_surface.fill((20, 20, 30))
                 self.all_sprites.custom_draw(self.player, self.display_surface)
                 self.draw_hud()
                 
             elif self.state == "dialogue":
-                # Jalankan dan render dialog cutscene
                 self.dialogue_manager.update()
+                self.play_bgm(self.bgm_default)
+                
                 self.display_surface.fill((20, 20, 30))
                 self.all_sprites.custom_draw(self.player, self.display_surface)
                 self.draw_hud()
@@ -392,7 +463,6 @@ class Game:
             scaled_surface = pygame.transform.scale(self.display_surface, (WINDOW_WIDTH, WINDOW_HEIGHT))
             self.screen.blit(scaled_surface, (0, 0))
             
-            # Gambar kotak dialog di layar utama fisik (skala penuh 1280x720) jika aktif
             if self.state == "dialogue":
                 self.dialogue_manager.draw(self.screen)
             
