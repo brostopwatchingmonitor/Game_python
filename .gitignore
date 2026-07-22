@@ -53,10 +53,10 @@ venv.bak/
 # Tool & Analysis outputs
 graphify-out/
 .gemini/
+markdown/
 
 # Unused / Old Projects & Large Redundant Assets
-Project_Base_OLD/
-Project Base_OLD/
+OLD/
 
 # Game save data (Local gameplay progress)
 save_data.json
