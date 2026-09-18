@@ -1,0 +1,21 @@
+services:
+  app:
+    build: .
+    container_name: python_game
+    user: "1000:1000"
+    working_dir: /app
+    environment:
+      - PYTHONPATH=src
+      - DISPLAY=${DISPLAY}
+      - PULSE_SERVER=unix:/tmp/pulse-socket
+      - SDL_AUDIODRIVER=pulseaudio
+    volumes:
+      - .:/app
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - /mnt/wslg/runtime-dir/pulse/native:/tmp/pulse-socket
+    networks:
+      - dev_shared_network
+
+networks:
+  dev_shared_network:
+    external: true

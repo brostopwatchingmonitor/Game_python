@@ -1,0 +1,10 @@
+{
+  "level": 1,
+  "xp": 0,
+  "xp_to_next_level": 100,
+  "hp": 100,
+  "max_hp": 100,
+  "score": 0,
+  "base_attack_damage": 20,
+  "speed": 200
+}

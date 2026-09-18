@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="150" height="20" tilewidth="16" tileheight="16" infinite="0" nextlayerid="22" nextobjectid="28">
  <tileset firstgid="1" name="Tiles" tilewidth="16" tileheight="16" tilecount="625" columns="25">
-  <image source="../../../../dump/Legacy-Fantasy - High Forest 2.3/Assets/Tiles.png" width="400" height="400"/>
+  <image source="resourcegame/Tiles.png" width="400" height="400"/>
   <tile id="6">
    <objectgroup draworder="index" id="2">
     <object id="1" x="0.818961" y="14.8481">
@@ -81,31 +81,31 @@
   </tile>
  </tileset>
  <tileset firstgid="626" name="Buildings" tilewidth="16" tileheight="16" tilecount="625" columns="25">
-  <image source="../../../../dump/Legacy-Fantasy - High Forest 2.3/Assets/Buildings.png" width="400" height="400"/>
+  <image source="resourcegame/Buildings.png" width="400" height="400"/>
  </tileset>
  <tileset firstgid="1251" name="Tree-Assets" tilewidth="16" tileheight="16" tilecount="525" columns="21">
-  <image source="../../../../dump/Legacy-Fantasy - High Forest 2.3/Assets/Tree-Assets.png" width="336" height="400"/>
+  <image source="resourcegame/Tree-Assets.png" width="336" height="400"/>
  </tileset>
  <tileset firstgid="1776" name="Dark-Tree" tilewidth="16" tileheight="16" tilecount="6300" columns="84">
-  <image source="../../../../dump/Legacy-Fantasy - High Forest 2.3/Trees/Dark-Tree.png" width="1344" height="1200"/>
+  <image source="resourcegame/Trees/Dark-Tree.png" width="1344" height="1200"/>
  </tileset>
  <tileset firstgid="8076" name="Green-Tree" tilewidth="16" tileheight="16" tilecount="6300" columns="84">
-  <image source="../../../../dump/Legacy-Fantasy - High Forest 2.3/Trees/Green-Tree.png" width="1344" height="1200"/>
+  <image source="resourcegame/Trees/Green-Tree.png" width="1344" height="1200"/>
  </tileset>
  <tileset firstgid="14376" name="Yellow-Tree" tilewidth="16" tileheight="16" tilecount="6300" columns="84">
-  <image source="../../../../dump/Legacy-Fantasy - High Forest 2.3/Trees/Yellow-Tree.png" width="1344" height="1200"/>
+  <image source="resourcegame/Trees/Yellow-Tree.png" width="1344" height="1200"/>
  </tileset>
  <tileset firstgid="20676" name="Red-Tree" tilewidth="16" tileheight="16" tilecount="6300" columns="84">
-  <image source="../../../../dump/Legacy-Fantasy - High Forest 2.3/Trees/Red-Tree.png" width="1344" height="1200"/>
+  <image source="resourcegame/Trees/Red-Tree.png" width="1344" height="1200"/>
  </tileset>
  <tileset firstgid="26976" name="Background" tilewidth="16" tileheight="16" tilecount="896" columns="56">
-  <image source="../../../../dump/Legacy-Fantasy - High Forest 2.3/Trees/Background.png" width="896" height="256"/>
+  <image source="resourcegame/Trees/Background.png" width="896" height="256"/>
  </tileset>
  <tileset firstgid="27872" name="Props-Rocks" tilewidth="16" tileheight="16" tilecount="378" columns="18">
-  <image source="../../../../dump/Legacy-Fantasy - High Forest 2.3/Assets/Props-Rocks.png" width="288" height="336"/>
+  <image source="resourcegame/Props-Rocks.png" width="288" height="336"/>
  </tileset>
  <tileset firstgid="28250" name="Interior-01" tilewidth="16" tileheight="16" tilecount="625" columns="25">
-  <image source="../../../../dump/Legacy-Fantasy - High Forest 2.3/Assets/Interior-01.png" width="400" height="400"/>
+  <image source="resourcegame/Interior-01.png" width="400" height="400"/>
  </tileset>
  <layer id="11" name="bhapp" width="150" height="20">
   <data encoding="csv">
